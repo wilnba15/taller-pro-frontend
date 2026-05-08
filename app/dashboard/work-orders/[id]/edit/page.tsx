@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 type WorkOrder = {
   id: number;
@@ -79,6 +80,30 @@ type WorkOrderItemDB = {
   created_at?: string;
 };
 
+const parseAmount = (value: string | number | null | undefined) => {
+  if (value === null || value === undefined) return 0;
+
+  const normalized = String(value)
+    .trim()
+    .replace(",", ".")
+    .replace(/[^0-9.-]/g, "");
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getAuthHeaders = () => {
+  if (typeof window === "undefined") return {};
+
+  const token =
+    localStorage.getItem("tallerpro_token") ||
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("siadauto_token");
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 export default function EditWorkOrderPage() {
   const api = process.env.NEXT_PUBLIC_API_BASE;
   const router = useRouter();
@@ -109,7 +134,13 @@ export default function EditWorkOrderPage() {
   ): Promise<Response | null> => {
     for (const url of urls) {
       try {
-        const res = await fetch(url, options);
+        const res = await fetch(url, {
+          ...options,
+          headers: {
+            ...getAuthHeaders(),
+            ...(options?.headers || {}),
+          },
+        });
         if (res.ok) return res;
       } catch {
         // probar siguiente URL
@@ -170,8 +201,8 @@ export default function EditWorkOrderPage() {
   });
 
   const buildItemPayload = (item: CostItem) => {
-    const quantity = Number(item.quantity || 0);
-    const unitPrice = Number(item.unit_price || 0);
+    const quantity = parseAmount(item.quantity);
+    const unitPrice = parseAmount(item.unit_price);
 
     return {
       work_order_id: Number(orderId),
@@ -186,18 +217,16 @@ export default function EditWorkOrderPage() {
   const loadCostItems = async (order: WorkOrder) => {
     if (!api || !orderId) return;
 
-    const res = await fetch(`${api}/work-order-items/work-order/${orderId}`, {
-      cache: "no-store",
-    });
-
-    if (res.ok) {
-      const data = await res.json().catch(() => []);
+    try {
+      const data = await apiFetch<WorkOrderItemDB[]>(`/work-order-items/work-order/${orderId}`);
       const dbItems = normalizeCostItemsResponse(data);
 
       if (dbItems.length > 0) {
         setCostItems(dbItems.map(mapDbItemToCostItem));
         return;
       }
+    } catch {
+      // Si no existen ítems todavía, reconstruimos desde los costos guardados en la orden.
     }
 
     setCostItems([
@@ -225,19 +254,11 @@ export default function EditWorkOrderPage() {
       try {
         if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
-        const [orderRes, clientsRes, vehiclesRes] = await Promise.all([
-          fetch(`${api}/work-orders/${orderId}`, { cache: "no-store" }),
-          fetch(`${api}/clients/`, { cache: "no-store" }),
-          fetch(`${api}/vehicles/`, { cache: "no-store" }),
+        const [order, clientsData, vehiclesData] = await Promise.all([
+          apiFetch<WorkOrder>(`/work-orders/${orderId}`),
+          apiFetch<Client[]>("/clients/"),
+          apiFetch<Vehicle[]>("/vehicles/"),
         ]);
-
-        if (!orderRes.ok) throw new Error("No se pudo cargar la orden");
-        if (!clientsRes.ok) throw new Error("No se pudieron cargar los clientes");
-        if (!vehiclesRes.ok) throw new Error("No se pudieron cargar los vehículos");
-
-        const order: WorkOrder = await orderRes.json();
-        const clientsData: Client[] = await clientsRes.json();
-        const vehiclesData: Vehicle[] = await vehiclesRes.json();
 
         setClients(clientsData);
         setVehicles(vehiclesData);
@@ -281,8 +302,8 @@ export default function EditWorkOrderPage() {
   const costTotals = useMemo(() => {
     return costItems.reduce(
       (acc, item) => {
-        const quantity = Number(item.quantity || 0);
-        const unitPrice = Number(item.unit_price || 0);
+        const quantity = parseAmount(item.quantity);
+        const unitPrice = parseAmount(item.unit_price);
         const subtotal = quantity * unitPrice;
 
         if (item.type === "labor") acc.labor += subtotal;
@@ -362,14 +383,9 @@ export default function EditWorkOrderPage() {
       if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
       if (item.dbId) {
-        const res = await fetch(`${api}/work-order-items/${item.dbId}`, {
+        await apiFetch(`/work-order-items/${item.dbId}`, {
           method: "DELETE",
         });
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.detail || "No se pudo eliminar el ítem de la BD");
-        }
       }
 
       setCostItems((prev) => prev.filter((row) => row.id !== item.id));
@@ -382,17 +398,19 @@ export default function EditWorkOrderPage() {
   const saveCostItems = async () => {
     if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
-    const currentRes = await fetch(`${api}/work-order-items/work-order/${orderId}`, {
-      cache: "no-store",
-    });
+    let currentItems: WorkOrderItemDB[] = [];
 
-    const currentItems: WorkOrderItemDB[] = currentRes.ok
-      ? normalizeCostItemsResponse(await currentRes.json().catch(() => []))
-      : [];
+    try {
+      currentItems = normalizeCostItemsResponse(
+        await apiFetch<WorkOrderItemDB[]>(`/work-order-items/work-order/${orderId}`)
+      );
+    } catch {
+      currentItems = [];
+    }
 
     await Promise.all(
       currentItems.map((item) =>
-        fetch(`${api}/work-order-items/${item.id}`, { method: "DELETE" })
+        apiFetch(`/work-order-items/${item.id}`, { method: "DELETE" })
       )
     );
 
@@ -401,23 +419,12 @@ export default function EditWorkOrderPage() {
       .filter((item) => item.description && (item.quantity > 0 || item.unit_price > 0));
 
     await Promise.all(
-      validItems.map(async (item) => {
-        const res = await fetch(`${api}/work-order-items/`, {
+      validItems.map((item) =>
+        apiFetch("/work-order-items/", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify(item),
-        });
-
-        const data = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          throw new Error(data?.detail || "No se pudo guardar un ítem de la orden");
-        }
-
-        return data;
-      })
+        })
+      )
     );
   };
 
@@ -531,7 +538,6 @@ export default function EditWorkOrderPage() {
       if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
       const payload = {
-        workshop_id: form.workshop_id,
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
         entry_date: form.entry_date,
@@ -541,23 +547,14 @@ export default function EditWorkOrderPage() {
         diagnosis: form.diagnosis || null,
         work_performed: form.work_performed || null,
         notes: form.notes || null,
-        labor_cost: Number(costTotals.labor || 0),
-        parts_cost: Number(costTotals.parts || 0),
+        labor_cost: Number(costTotals.labor.toFixed(2)),
+        parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
-      const res = await fetch(`${api}/work-orders/${orderId}`, {
+      await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(payload),
       });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(data?.detail || "No se pudo actualizar la orden");
-      }
 
       await saveCostItems();
 
@@ -581,7 +578,6 @@ export default function EditWorkOrderPage() {
       if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
       const payload = {
-        workshop_id: form.workshop_id,
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
         entry_date: form.entry_date,
@@ -591,28 +587,32 @@ export default function EditWorkOrderPage() {
         diagnosis: form.diagnosis || null,
         work_performed: form.work_performed || null,
         notes: form.notes || null,
-        labor_cost: Number(costTotals.labor || 0),
-        parts_cost: Number(costTotals.parts || 0),
+        labor_cost: Number(costTotals.labor.toFixed(2)),
+        parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
-      const res = await fetch(`${api}/work-orders/${orderId}`, {
+      await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(payload),
       });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(data?.detail || "No se pudo actualizar la orden");
-      }
 
       await saveCostItems();
 
       setMessage("Orden guardada. Generando factura...");
-      window.open(`${api}/work-orders/invoice/${orderId}/pdf`, "_blank", "noopener,noreferrer");
+
+      const pdfRes = await fetch(`${api}/work-orders/invoice/${orderId}/pdf`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (!pdfRes.ok) {
+        throw new Error("No se pudo generar la factura PDF");
+      }
+
+      const blob = await pdfRes.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
 
       setTimeout(() => {
         setMessage("");
@@ -635,7 +635,6 @@ export default function EditWorkOrderPage() {
       if (!selectedVehicle) throw new Error("No se pudo identificar el vehículo");
 
       const payload = {
-        workshop_id: form.workshop_id,
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
         entry_date: form.entry_date,
@@ -645,23 +644,14 @@ export default function EditWorkOrderPage() {
         diagnosis: form.diagnosis || null,
         work_performed: form.work_performed || null,
         notes: form.notes || null,
-        labor_cost: Number(costTotals.labor || 0),
-        parts_cost: Number(costTotals.parts || 0),
+        labor_cost: Number(costTotals.labor.toFixed(2)),
+        parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
-      const res = await fetch(`${api}/work-orders/${orderId}`, {
+      await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(payload),
       });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(data?.detail || "No se pudo actualizar la orden");
-      }
 
       await saveCostItems();
 
@@ -888,7 +878,7 @@ Gracias por confiar en Taller PRO`;
                   </thead>
                   <tbody className="divide-y divide-slate-800">
                     {costItems.map((item) => {
-                      const subtotal = Number(item.quantity || 0) * Number(item.unit_price || 0);
+                      const subtotal = parseAmount(item.quantity) * parseAmount(item.unit_price);
 
                       return (
                         <tr key={item.id} className="bg-slate-950/70">

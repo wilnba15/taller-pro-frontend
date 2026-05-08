@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 
 type FormData = {
   full_name: string;
@@ -41,34 +42,19 @@ export default function NewClientPage() {
     setError("");
 
     try {
-      const api = process.env.NEXT_PUBLIC_API_BASE;
-
-      if (!api) {
-        throw new Error("Falta NEXT_PUBLIC_API_BASE en las variables de entorno");
-      }
-
       const payload = {
-        workshop_id: 1,
-        full_name: form.full_name,
-        identification: form.identification,
-        phone: form.phone,
-        email: form.email || null,
-        address: form.address || null,
-        notes: form.notes || null,
+        full_name: form.full_name.trim(),
+        identification: form.identification.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim() || null,
+        address: form.address.trim() || null,
+        notes: form.notes.trim() || null,
       };
 
-      const res = await fetch(`${api}/clients/`, {
+      await apiFetch("/clients/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(payload),
       });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Error al crear cliente: ${res.status} ${text}`);
-      }
 
       router.push("/dashboard/clients");
       router.refresh();
@@ -86,7 +72,7 @@ export default function NewClientPage() {
           <div>
             <h1 className="text-3xl font-bold">Nuevo cliente</h1>
             <p className="text-slate-400 mt-1">
-              Crea un cliente y guárdalo en el backend staging.
+              Crea un cliente asociado automáticamente al taller autenticado.
             </p>
           </div>
 

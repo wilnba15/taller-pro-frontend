@@ -1,8 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
+
+type Client = {
+  id: number;
+  workshop_id: number;
+  full_name: string;
+  identification: string;
+  phone: string;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+};
 
 type FormData = {
   full_name: string;
@@ -13,8 +25,10 @@ type FormData = {
   notes: string;
 };
 
-export default function NewClientPage() {
+export default function EditClientPage() {
   const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const clientId = params.id;
 
   const [form, setForm] = useState<FormData>({
     full_name: "",
@@ -25,8 +39,29 @@ export default function NewClientPage() {
     notes: "",
   });
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    apiFetch<Client>(`/clients/${clientId}`)
+      .then((client) => {
+        setForm({
+          full_name: client.full_name || "",
+          identification: client.identification || "",
+          phone: client.phone || "",
+          email: client.email || "",
+          address: client.address || "",
+          notes: client.notes || "",
+        });
+      })
+      .catch((err) =>
+        setError(
+          err instanceof Error ? err.message : "No se pudo cargar el cliente"
+        )
+      )
+      .finally(() => setLoading(false));
+  }, [clientId]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -37,56 +72,49 @@ export default function NewClientPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoading(true);
+    setSaving(true);
     setError("");
 
     try {
-      const api = process.env.NEXT_PUBLIC_API_BASE;
-
-      if (!api) {
-        throw new Error("Falta NEXT_PUBLIC_API_BASE en las variables de entorno");
-      }
-
       const payload = {
-        workshop_id: 1,
-        full_name: form.full_name,
-        identification: form.identification,
-        phone: form.phone,
-        email: form.email || null,
-        address: form.address || null,
-        notes: form.notes || null,
+        full_name: form.full_name.trim(),
+        identification: form.identification.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim() || null,
+        address: form.address.trim() || null,
+        notes: form.notes.trim() || null,
       };
 
-      const res = await fetch(`${api}/clients/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      await apiFetch(`/clients/${clientId}`, {
+        method: "PUT",
         body: JSON.stringify(payload),
       });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Error al crear cliente: ${res.status} ${text}`);
-      }
 
       router.push("/dashboard/clients");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-white p-6">
+        <div className="max-w-3xl mx-auto">Cargando cliente...</div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6">
       <div className="max-w-3xl mx-auto">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Nuevo cliente</h1>
+            <h1 className="text-3xl font-bold">Editar cliente</h1>
             <p className="text-slate-400 mt-1">
-              Crea un cliente y guárdalo en el backend staging.
+              Solo se puede editar si el cliente pertenece al taller autenticado.
             </p>
           </div>
 
@@ -109,7 +137,6 @@ export default function NewClientPage() {
               value={form.full_name}
               onChange={handleChange}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none"
-              placeholder="Juan Pérez"
               required
             />
           </div>
@@ -121,7 +148,6 @@ export default function NewClientPage() {
               value={form.identification}
               onChange={handleChange}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none"
-              placeholder="1712345678"
               required
             />
           </div>
@@ -133,7 +159,6 @@ export default function NewClientPage() {
               value={form.phone}
               onChange={handleChange}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none"
-              placeholder="0999999999"
               required
             />
           </div>
@@ -145,7 +170,6 @@ export default function NewClientPage() {
               value={form.email}
               onChange={handleChange}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none"
-              placeholder="correo@ejemplo.com"
             />
           </div>
 
@@ -156,7 +180,6 @@ export default function NewClientPage() {
               value={form.address}
               onChange={handleChange}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none"
-              placeholder="Quito, Ecuador"
             />
           </div>
 
@@ -167,7 +190,6 @@ export default function NewClientPage() {
               value={form.notes}
               onChange={handleChange}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none min-h-28"
-              placeholder="Observaciones del cliente"
             />
           </div>
 
@@ -179,10 +201,10 @@ export default function NewClientPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={saving}
             className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 transition"
           >
-            {loading ? "Guardando..." : "Guardar cliente"}
+            {saving ? "Guardando..." : "Guardar cambios"}
           </button>
         </form>
       </div>

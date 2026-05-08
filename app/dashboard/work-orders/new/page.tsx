@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-
-const DEFAULT_WORKSHOP_ID = 1;
+import { apiFetch } from "@/lib/api";
 
 type Client = {
   id: number;
@@ -42,6 +41,13 @@ type FormState = {
   notes: string;
 };
 
+type WorkOrderResponse = {
+  id: number;
+  workshop_id: number;
+  client_id: number;
+  vehicle_id: number;
+};
+
 const initialForm: FormState = {
   client_id: "",
   vehicle_id: "",
@@ -64,7 +70,6 @@ const createEmptyItem = (type: OrderItem["item_type"]): OrderItem => ({
 
 export default function NewWorkOrderPage() {
   const router = useRouter();
-  const api = process.env.NEXT_PUBLIC_API_BASE;
 
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -81,34 +86,16 @@ export default function NewWorkOrderPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        if (!api) {
-          throw new Error("Falta NEXT_PUBLIC_API_BASE");
-        }
-
-        const [clientsRes, vehiclesRes] = await Promise.all([
-          fetch(`${api}/clients/`),
-          fetch(`${api}/vehicles/`),
-        ]);
-
-        if (!clientsRes.ok) {
-          throw new Error("No se pudieron cargar los clientes");
-        }
-
-        if (!vehiclesRes.ok) {
-          throw new Error("No se pudieron cargar los vehículos");
-        }
+        setError("");
 
         const [clientsData, vehiclesData] = await Promise.all([
-          clientsRes.json(),
-          vehiclesRes.json(),
+          apiFetch<Client[]>("/clients/"),
+          apiFetch<Vehicle[]>("/vehicles/"),
         ]);
 
-        setClients(
-          clientsData.filter((client: Client) => client.workshop_id === DEFAULT_WORKSHOP_ID)
-        );
-        setVehicles(
-          vehiclesData.filter((vehicle: Vehicle) => vehicle.workshop_id === DEFAULT_WORKSHOP_ID)
-        );
+        // El backend ya devuelve solo datos del taller autenticado.
+        setClients(clientsData);
+        setVehicles(vehiclesData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error cargando datos");
       } finally {
@@ -117,7 +104,7 @@ export default function NewWorkOrderPage() {
     };
 
     loadData();
-  }, [api]);
+  }, []);
 
   const filteredVehicles = useMemo(() => {
     const selectedClientId = Number(form.client_id);
@@ -205,19 +192,12 @@ export default function NewWorkOrderPage() {
   };
 
   const saveWorkOrderItems = async (workOrderId: number) => {
-    if (!api) {
-      throw new Error("Falta NEXT_PUBLIC_API_BASE");
-    }
-
     const validItems = getValidItems();
 
     await Promise.all(
       validItems.map(async (item) => {
-        const res = await fetch(`${api}/work-order-items/`, {
+        await apiFetch("/work-order-items/", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify({
             work_order_id: workOrderId,
             item_type: item.item_type,
@@ -227,12 +207,6 @@ export default function NewWorkOrderPage() {
             subtotal: item.subtotal,
           }),
         });
-
-        const data = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          throw new Error(data?.detail || "No se pudo guardar un ítem de la orden");
-        }
       })
     );
   };
@@ -244,12 +218,8 @@ export default function NewWorkOrderPage() {
     setSuccess("");
 
     try {
-      if (!api) {
-        throw new Error("Falta NEXT_PUBLIC_API_BASE");
-      }
-
       const payload = {
-        workshop_id: DEFAULT_WORKSHOP_ID,
+        // workshop_id ya NO se envía. El backend lo toma del token.
         client_id: Number(form.client_id),
         vehicle_id: Number(form.vehicle_id),
         entry_date: form.entry_date,
@@ -263,25 +233,16 @@ export default function NewWorkOrderPage() {
         parts_cost: totals.parts,
       };
 
-      const res = await fetch(`${api}/work-orders/`, {
+      const data = await apiFetch<WorkOrderResponse>("/work-orders/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(payload),
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.detail || "No se pudo guardar la orden de trabajo");
-      }
 
       await saveWorkOrderItems(data.id);
 
       setSuccess("Orden de trabajo e ítems guardados correctamente");
       setTimeout(() => {
-        router.push(`/dashboard/work-orders/${data.id}`);
+        router.push(`/dashboard/work-orders/${data.id}/edit`);
         router.refresh();
       }, 700);
     } catch (err) {

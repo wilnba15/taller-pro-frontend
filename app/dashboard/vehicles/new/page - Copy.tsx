@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
 
 type Client = {
   id: number;
@@ -33,6 +32,7 @@ type InspectionNote = {
   description: string;
 };
 
+const DEFAULT_WORKSHOP_ID = 1;
 
 const FUEL_LEVEL_OPTIONS = [
   { value: "vacio", label: "Vacío" },
@@ -112,8 +112,19 @@ export default function NewVehiclePage() {
 
       try {
         setError("");
-        const data = await apiFetch<Client[]>("/clients/");
-        setClients(data);
+        const res = await fetch(`${api}/clients/`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error("No se pudieron cargar los clientes");
+        }
+
+        const data: Client[] = await res.json();
+        const filtered = data.filter(
+          (client) => client.workshop_id === DEFAULT_WORKSHOP_ID
+        );
+        setClients(filtered);
       } catch (err) {
         console.error(err);
         setError("No se pudieron cargar los clientes.");
@@ -169,6 +180,7 @@ export default function NewVehiclePage() {
 
     try {
       const payload = {
+        workshop_id: DEFAULT_WORKSHOP_ID,
         client_id: Number(form.client_id),
         plate: form.plate.trim().toUpperCase(),
         brand: form.brand.trim(),
@@ -184,10 +196,19 @@ export default function NewVehiclePage() {
             .join("\n\n") || null,
       };
 
-      await apiFetch("/vehicles/", {
+      const res = await fetch(`${api}/vehicles/`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
       });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.detail || "No se pudo guardar el vehículo");
+      }
 
       setSuccess("Vehículo guardado correctamente.");
 
@@ -210,7 +231,7 @@ export default function NewVehiclePage() {
           <div>
             <h1 className="text-3xl font-bold">Nuevo vehículo</h1>
             <p className="text-slate-400 mt-1">
-              Crea un vehículo y asígnalo a un cliente del taller autenticado.
+              Crea un vehículo y asígnalo a un cliente del taller.
             </p>
           </div>
 

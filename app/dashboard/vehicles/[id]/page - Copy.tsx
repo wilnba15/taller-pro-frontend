@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import jsPDF from "jspdf";
-import { apiFetch } from "@/lib/api";
 
 type Vehicle = {
   id: number;
@@ -138,6 +137,7 @@ function generateReceptionPDF(vehicle: Vehicle, client: Client | null) {
 }
 
 export default function VehicleDetailPage() {
+  const api = process.env.NEXT_PUBLIC_API_BASE;
   const params = useParams<{ id: string }>();
   const router = useRouter();
 
@@ -177,15 +177,22 @@ export default function VehicleDetailPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
+        if (!api) throw new Error("Falta configurar NEXT_PUBLIC_API_BASE");
         if (!vehicleId) throw new Error("No se recibió el ID del vehículo");
 
         setLoading(true);
         setError("");
 
-        const [vehicleData, clientsData] = await Promise.all([
-          apiFetch<Vehicle>(`/vehicles/${vehicleId}`),
-          apiFetch<Client[]>("/clients/"),
+        const [vehicleRes, clientsRes] = await Promise.all([
+          fetch(`${api}/vehicles/${vehicleId}`, { cache: "no-store" }),
+          fetch(`${api}/clients/`, { cache: "no-store" }),
         ]);
+
+        if (!vehicleRes.ok) throw new Error("No se pudo cargar el vehículo");
+        if (!clientsRes.ok) throw new Error("No se pudieron cargar los clientes");
+
+        const vehicleData: Vehicle = await vehicleRes.json();
+        const clientsData: Client[] = await clientsRes.json();
 
         setVehicle(vehicleData);
         setClients(clientsData);
@@ -210,7 +217,7 @@ export default function VehicleDetailPage() {
     };
 
     loadData();
-  }, [vehicleId]);
+  }, [api, vehicleId]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -223,6 +230,7 @@ export default function VehicleDetailPage() {
     e.preventDefault();
 
     try {
+      if (!api) throw new Error("Falta configurar NEXT_PUBLIC_API_BASE");
       if (!vehicle) throw new Error("No hay vehículo cargado");
 
       setSaving(true);
@@ -230,6 +238,7 @@ export default function VehicleDetailPage() {
       setSuccess("");
 
       const payload = {
+        workshop_id: vehicle.workshop_id,
         client_id: vehicle.client_id,
         plate: form.plate.trim().toUpperCase(),
         brand: form.brand.trim(),
@@ -242,10 +251,15 @@ export default function VehicleDetailPage() {
         notes: form.notes.trim() || null,
       };
 
-      const data = await apiFetch<Vehicle>(`/vehicles/${vehicle.id}`, {
+      const res = await fetch(`${api}/vehicles/${vehicle.id}`, {
         method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data?.detail || "No se pudo actualizar el vehículo");
 
       setVehicle(data);
       setSuccess("Vehículo actualizado correctamente.");

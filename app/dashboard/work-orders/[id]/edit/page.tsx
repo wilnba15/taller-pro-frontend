@@ -92,7 +92,7 @@ const parseAmount = (value: string | number | null | undefined) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const getAuthHeaders = () => {
+const getAuthHeaders = (): HeadersInit => {
   if (typeof window === "undefined") return {};
 
   const token =
@@ -101,7 +101,11 @@ const getAuthHeaders = () => {
     localStorage.getItem("token") ||
     localStorage.getItem("siadauto_token");
 
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (!token) return {};
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
 };
 
 export default function EditWorkOrderPage() {
@@ -134,12 +138,20 @@ export default function EditWorkOrderPage() {
   ): Promise<Response | null> => {
     for (const url of urls) {
       try {
+        const headers = new Headers(options?.headers);
+        const authHeaders = getAuthHeaders();
+
+        if (authHeaders instanceof Headers) {
+          authHeaders.forEach((value, key) => headers.set(key, value));
+        } else if (Array.isArray(authHeaders)) {
+          authHeaders.forEach(([key, value]) => headers.set(key, value));
+        } else {
+          Object.entries(authHeaders).forEach(([key, value]) => headers.set(key, value));
+        }
+
         const res = await fetch(url, {
           ...options,
-          headers: {
-            ...getAuthHeaders(),
-            ...(options?.headers || {}),
-          },
+          headers,
         });
         if (res.ok) return res;
       } catch {

@@ -19,7 +19,6 @@ type WorkOrder = {
   notes?: string | null;
   labor_cost: number | string;
   parts_cost: number | string;
-  current_km?: number | string | null;
 };
 
 type Client = {
@@ -59,7 +58,6 @@ type FormState = {
   notes: string;
   labor_cost: string;
   parts_cost: string;
-  current_km: string;
 };
 
 type CostItem = {
@@ -69,9 +67,6 @@ type CostItem = {
   description: string;
   quantity: string;
   unit_price: string;
-  next_service_km: string;
-  next_service_date: string;
-  reminder_enabled: boolean;
 };
 
 type WorkOrderItemDB = {
@@ -82,10 +77,6 @@ type WorkOrderItemDB = {
   quantity: number | string;
   unit_price: number | string;
   subtotal: number | string;
-  next_service_km?: number | string | null;
-  next_service_date?: string | null;
-  reminder_enabled?: boolean | null;
-  reminder_sent?: boolean | null;
   created_at?: string;
 };
 
@@ -199,12 +190,11 @@ export default function EditWorkOrderPage() {
     notes: "",
     labor_cost: "0",
     parts_cost: "0",
-    current_km: "",
   });
 
   const [costItems, setCostItems] = useState<CostItem[]>([
-    { id: "labor-initial", type: "labor", description: "Mano de obra", quantity: "1", unit_price: "0", next_service_km: "", next_service_date: "", reminder_enabled: true },
-    { id: "parts-initial", type: "part", description: "Repuestos", quantity: "1", unit_price: "0", next_service_km: "", next_service_date: "", reminder_enabled: true },
+    { id: "labor-initial", type: "labor", description: "Mano de obra", quantity: "1", unit_price: "0" },
+    { id: "parts-initial", type: "part", description: "Repuestos", quantity: "1", unit_price: "0" },
   ]);
 
   const normalizeCostItemsResponse = (data: any): WorkOrderItemDB[] => {
@@ -220,9 +210,6 @@ export default function EditWorkOrderPage() {
     description: item.description || "",
     quantity: String(item.quantity ?? "1"),
     unit_price: String(item.unit_price ?? "0"),
-    next_service_km: item.next_service_km ? String(item.next_service_km) : "",
-    next_service_date: item.next_service_date || "",
-    reminder_enabled: item.reminder_enabled ?? true,
   });
 
   const buildItemPayload = (item: CostItem) => {
@@ -236,9 +223,6 @@ export default function EditWorkOrderPage() {
       quantity,
       unit_price: unitPrice,
       subtotal: quantity * unitPrice,
-      next_service_km: item.next_service_km ? Number(item.next_service_km) : null,
-      next_service_date: item.next_service_date || null,
-      reminder_enabled: item.reminder_enabled ?? true,
     };
   };
 
@@ -264,9 +248,6 @@ export default function EditWorkOrderPage() {
         description: "Mano de obra registrada",
         quantity: "1",
         unit_price: String(order.labor_cost ?? "0"),
-        next_service_km: "",
-        next_service_date: "",
-        reminder_enabled: true,
       },
       {
         id: "parts-initial",
@@ -274,9 +255,6 @@ export default function EditWorkOrderPage() {
         description: "Repuestos registrados",
         quantity: "1",
         unit_price: String(order.parts_cost ?? "0"),
-        next_service_km: "",
-        next_service_date: "",
-        reminder_enabled: true,
       },
     ]);
   };
@@ -310,7 +288,6 @@ export default function EditWorkOrderPage() {
           notes: order.notes || "",
           labor_cost: String(order.labor_cost ?? "0"),
           parts_cost: String(order.parts_cost ?? "0"),
-          current_km: order.current_km ? String(order.current_km) : "",
         });
 
         await Promise.all([loadCostItems(order), loadPhotos()]);
@@ -409,9 +386,6 @@ export default function EditWorkOrderPage() {
         description: "",
         quantity: "1",
         unit_price: "0",
-        next_service_km: "",
-        next_service_date: "",
-        reminder_enabled: true,
       },
     ]);
   };
@@ -578,7 +552,6 @@ export default function EditWorkOrderPage() {
       const payload = {
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
-        current_km: form.current_km ? Number(form.current_km) : null,
         entry_date: form.entry_date,
         estimated_delivery_date: form.estimated_delivery_date || null,
         status: form.status,
@@ -619,7 +592,6 @@ export default function EditWorkOrderPage() {
       const payload = {
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
-        current_km: form.current_km ? Number(form.current_km) : null,
         entry_date: form.entry_date,
         estimated_delivery_date: form.estimated_delivery_date || null,
         status: form.status,
@@ -677,7 +649,6 @@ export default function EditWorkOrderPage() {
       const payload = {
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
-        current_km: form.current_km ? Number(form.current_km) : null,
         entry_date: form.entry_date,
         estimated_delivery_date: form.estimated_delivery_date || null,
         status: form.status,
@@ -815,19 +786,6 @@ Gracias por confiar en Taller PRO`;
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">KM actual de la visita</label>
-                <input
-                  type="number"
-                  name="current_km"
-                  min="0"
-                  value={form.current_km}
-                  onChange={handleChange}
-                  placeholder="Ej: 50000"
-                  className="w-full rounded-xl border border-blue-500/40 bg-slate-950 px-4 py-3 outline-none"
-                />
-              </div>
-
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium mb-2">Estado</label>
                 <select
@@ -919,7 +877,7 @@ Gracias por confiar en Taller PRO`;
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-slate-800">
-                <table className="min-w-[1120px] w-full text-sm">
+                <table className="min-w-[760px] w-full text-sm">
                   <thead className="bg-slate-900 text-slate-300">
                     <tr>
                       <th className="px-3 py-3 text-left font-medium">Tipo</th>
@@ -927,9 +885,6 @@ Gracias por confiar en Taller PRO`;
                       <th className="px-3 py-3 text-right font-medium">Cant.</th>
                       <th className="px-3 py-3 text-right font-medium">V. unitario</th>
                       <th className="px-3 py-3 text-right font-medium">Subtotal</th>
-                      <th className="px-3 py-3 text-right font-medium">Próx. KM</th>
-                      <th className="px-3 py-3 text-left font-medium">Próx. fecha</th>
-                      <th className="px-3 py-3 text-center font-medium">Record.</th>
                       <th className="px-3 py-3 text-center font-medium">Acción</th>
                     </tr>
                   </thead>
@@ -981,40 +936,6 @@ Gracias por confiar en Taller PRO`;
                           <td className="px-3 py-2 text-right font-semibold text-slate-100">
                             ${subtotal.toFixed(2)}
                           </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              value={item.next_service_km}
-                              onChange={(e) => handleCostItemChange(item.id, "next_service_km", e.target.value)}
-                              placeholder="60000"
-                              className="w-28 rounded-lg border border-blue-500/30 bg-slate-950 px-3 py-2 text-right outline-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="date"
-                              value={item.next_service_date}
-                              onChange={(e) => handleCostItemChange(item.id, "next_service_date", e.target.value)}
-                              className="w-36 rounded-lg border border-blue-500/30 bg-slate-950 px-3 py-2 outline-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={item.reminder_enabled}
-                              onChange={(e) =>
-                                setCostItems((prev) =>
-                                  prev.map((row) =>
-                                    row.id === item.id
-                                      ? { ...row, reminder_enabled: e.target.checked }
-                                      : row
-                                  )
-                                )
-                              }
-                              className="h-4 w-4"
-                            />
-                          </td>
                           <td className="px-3 py-2 text-center">
                             <button
                               type="button"
@@ -1054,13 +975,6 @@ Gracias por confiar en Taller PRO`;
               >
                 Volver al listado
               </Link>
-              <Link
-                href={`/dashboard/vehicles/${form.vehicle_id}/vida-del-auto?plate=${encodeURIComponent(selectedVehicle?.plate || "")}&brand=${encodeURIComponent(selectedVehicle?.brand || "")}&model=${encodeURIComponent(selectedVehicle?.model || "")}&client=${encodeURIComponent(selectedClient?.full_name || "")}`}
-                className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 font-medium text-blue-200 hover:bg-blue-500/20 transition"
-              >
-                Vida del Auto
-              </Link>
-
               <button
                 type="submit"
                 disabled={saving}

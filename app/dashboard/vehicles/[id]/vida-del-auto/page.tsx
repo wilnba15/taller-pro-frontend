@@ -1,7 +1,7 @@
 import VehicleLifeTimeline from "@/components/VehicleLifeTimeline";
 
 type PageProps = {
-  params: { vehicleId: string };
+  params: { id: string };
   searchParams?: {
     plate?: string;
     brand?: string;
@@ -13,7 +13,7 @@ type PageProps = {
 export default function VidaDelAutoPage({ params, searchParams }: PageProps) {
   return (
     <VehicleLifeTimeline
-      vehicleId={params.vehicleId}
+      vehicleId={params.id}
       plate={searchParams?.plate}
       brand={searchParams?.brand}
       model={searchParams?.model}

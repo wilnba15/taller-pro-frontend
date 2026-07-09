@@ -1054,12 +1054,22 @@ Gracias por confiar en Taller PRO`;
               >
                 Volver al listado
               </Link>
-              <Link
-                href={`/dashboard/vehicles/${form.vehicle_id}/vida-del-auto?plate=${encodeURIComponent(selectedVehicle?.plate || "")}&brand=${encodeURIComponent(selectedVehicle?.brand || "")}&model=${encodeURIComponent(selectedVehicle?.model || "")}&client=${encodeURIComponent(selectedClient?.full_name || "")}`}
-                className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 font-medium text-blue-200 hover:bg-blue-500/20 transition"
-              >
-                Vida del Auto
-              </Link>
+              {selectedVehicle ? (
+                <Link
+                  href={`/dashboard/vehicles/${selectedVehicle.id}/vida-del-auto?plate=${encodeURIComponent(selectedVehicle.plate || "")}&brand=${encodeURIComponent(selectedVehicle.brand || "")}&model=${encodeURIComponent(selectedVehicle.model || "")}&client=${encodeURIComponent(selectedClient?.full_name || "")}`}
+                  className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 font-medium text-blue-200 hover:bg-blue-500/20 transition"
+                >
+                  Vida del Auto
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-xl border border-slate-700 px-4 py-3 font-medium text-slate-500"
+                >
+                  Vida del Auto
+                </button>
+              )}
 
               <button
                 type="submit"

@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 type WorkOrder = { id: number; workshop_id: number; client_id: number; vehicle_id: number; entry_date: string; estimated_delivery_date?: string | null; status: "pendiente" | "en_proceso" | "finalizado" | "entregado"; issue_description: string; diagnosis?: string | null; work_performed?: string | null; notes?: string | null; labor_cost: number | string; parts_cost: number | string; total: number | string; created_at?: string; updated_at?: string };
 type Client = { id: number; full_name: string; phone: string };
 type Vehicle = { id: number; client_id: number; plate: string; brand: string; model: string };
+type WorkOrderItem = { id: number; work_order_id: number; subtotal: number | string };
 type Stats = { activeCount: number; completedCount: number; deliveredCount: number; pendingCount: number; monthlyRevenue: number };
 
 function statusLabel(status: WorkOrder["status"]) {
@@ -23,11 +24,16 @@ function statusClasses(status: WorkOrder["status"]) {
 function formatMoney(value: number | string) {
   return new Intl.NumberFormat("es-EC", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(Number(value || 0));
 }
-function buildStats(workOrders: WorkOrder[]): Stats {
+function buildStats(
+  workOrders: WorkOrder[],
+  orderTotals: Record<number, number>
+): Stats {
   const now = new Date();
 
   return workOrders.reduce<Stats>((acc, item) => {
-    const orderDate = item.entry_date ? new Date(`${item.entry_date}T00:00:00`) : null;
+    const orderDate = item.entry_date
+      ? new Date(`${item.entry_date}T00:00:00`)
+      : null;
 
     const isCurrentMonth =
       orderDate &&
@@ -41,10 +47,7 @@ function buildStats(workOrders: WorkOrder[]): Stats {
     if (item.status === "finalizado") acc.completedCount += 1;
     if (item.status === "entregado") acc.deliveredCount += 1;
 
-    const realTotal =
-      Number(item.labor_cost || 0) + Number(item.parts_cost || 0);
-
-    acc.monthlyRevenue += realTotal;
+    acc.monthlyRevenue += orderTotals[item.id] ?? Number(item.total || 0);
 
     return acc;
   }, {
@@ -65,19 +68,59 @@ export default function WorkOrdersPage() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [orderTotals, setOrderTotals] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([apiFetch<WorkOrder[]>("/work-orders/"), apiFetch<Client[]>("/clients/"), apiFetch<Vehicle[]>("/vehicles/")])
-      .then(([wo, c, v]) => { setWorkOrders(wo); setClients(c); setVehicles(v); })
-      .catch((err) => setError(err instanceof Error ? err.message : "No se pudieron cargar las órdenes"))
-      .finally(() => setLoading(false));
+    const load = async () => {
+      try {
+        const [wo, c, v] = await Promise.all([
+          apiFetch<WorkOrder[]>("/work-orders/"),
+          apiFetch<Client[]>("/clients/"),
+          apiFetch<Vehicle[]>("/vehicles/"),
+        ]);
+
+        const totalsEntries = await Promise.all(
+          wo.map(async (order) => {
+            try {
+              const items = await apiFetch<WorkOrderItem[]>(
+                `/work-order-items/work-order/${order.id}`
+              );
+
+              const total = items.reduce(
+                (sum, item) => sum + Number(item.subtotal || 0),
+                0
+              );
+
+              return [order.id, total] as const;
+            } catch {
+              return [order.id, Number(order.total || 0)] as const;
+            }
+          })
+        );
+
+        setWorkOrders(wo);
+        setClients(c);
+        setVehicles(v);
+        setOrderTotals(Object.fromEntries(totalsEntries));
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No se pudieron cargar las órdenes"
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
   }, []);
 
   const clientMap = new Map(clients.map((client) => [client.id, client]));
   const vehicleMap = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
-  const stats = buildStats(workOrders);
+  const stats = buildStats(workOrders, orderTotals);
   const bars = buildBars(stats);
 
   if (loading) return <main className="min-h-screen bg-slate-950 text-white p-6"><div className="max-w-7xl mx-auto">Cargando órdenes...</div></main>;
@@ -105,7 +148,7 @@ export default function WorkOrdersPage() {
               <tbody>{workOrders.length === 0 ? <tr><td colSpan={9} className="px-4 py-6 text-center text-slate-400">No hay órdenes registradas.</td></tr> : workOrders.map((order) => {
                 const client = clientMap.get(order.client_id);
                 const vehicle = vehicleMap.get(order.vehicle_id);
-                return <tr key={order.id} className="border-t border-slate-800 align-top"><td className="px-4 py-3">{order.id}</td><td className="px-4 py-3"><div className="font-medium">{client?.full_name || `Cliente #${order.client_id}`}</div><div className="text-slate-400 text-xs">{client?.phone || "-"}</div></td><td className="px-4 py-3">{vehicle ? `${vehicle.brand} ${vehicle.model} (${vehicle.plate})` : `Vehículo #${order.vehicle_id}`}</td><td className="px-4 py-3">{order.entry_date}</td><td className="px-4 py-3">{order.estimated_delivery_date || "-"}</td><td className="px-4 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${statusClasses(order.status)}`}>{statusLabel(order.status)}</span></td><td className="px-4 py-3 max-w-[280px]"><div className="line-clamp-2">{order.issue_description}</div></td><td className="px-4 py-3 font-semibold">{formatMoney(order.total)}</td><td className="px-4 py-3"><Link href={`/dashboard/work-orders/${order.id}/edit`} className="rounded-lg bg-blue-600 px-3 py-2 text-center hover:bg-blue-500 transition">Editar orden</Link></td></tr>;
+                return <tr key={order.id} className="border-t border-slate-800 align-top"><td className="px-4 py-3">{order.id}</td><td className="px-4 py-3"><div className="font-medium">{client?.full_name || `Cliente #${order.client_id}`}</div><div className="text-slate-400 text-xs">{client?.phone || "-"}</div></td><td className="px-4 py-3">{vehicle ? `${vehicle.brand} ${vehicle.model} (${vehicle.plate})` : `Vehículo #${order.vehicle_id}`}</td><td className="px-4 py-3">{order.entry_date}</td><td className="px-4 py-3">{order.estimated_delivery_date || "-"}</td><td className="px-4 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${statusClasses(order.status)}`}>{statusLabel(order.status)}</span></td><td className="px-4 py-3 max-w-[280px]"><div className="line-clamp-2">{order.issue_description}</div></td><td className="px-4 py-3 font-semibold">{formatMoney(orderTotals[order.id] ?? order.total)}</td><td className="px-4 py-3"><Link href={`/dashboard/work-orders/${order.id}/edit`} className="rounded-lg bg-blue-600 px-3 py-2 text-center hover:bg-blue-500 transition">Editar orden</Link></td></tr>;
               })}</tbody>
             </table>
           </div>

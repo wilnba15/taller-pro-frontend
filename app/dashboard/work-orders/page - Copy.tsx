@@ -25,35 +25,15 @@ function formatMoney(value: number | string) {
 }
 function buildStats(workOrders: WorkOrder[]): Stats {
   const now = new Date();
-
   return workOrders.reduce<Stats>((acc, item) => {
-    const orderDate = item.entry_date ? new Date(`${item.entry_date}T00:00:00`) : null;
-
-    const isCurrentMonth =
-      orderDate &&
-      orderDate.getMonth() === now.getMonth() &&
-      orderDate.getFullYear() === now.getFullYear();
-
-    if (!isCurrentMonth) return acc;
-
+    const createdAt = item.created_at ? new Date(item.created_at) : null;
     if (item.status === "pendiente") acc.pendingCount += 1;
     if (item.status === "en_proceso") acc.activeCount += 1;
     if (item.status === "finalizado") acc.completedCount += 1;
     if (item.status === "entregado") acc.deliveredCount += 1;
-
-    const realTotal =
-      Number(item.labor_cost || 0) + Number(item.parts_cost || 0);
-
-    acc.monthlyRevenue += realTotal;
-
+    if (createdAt && createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear()) acc.monthlyRevenue += Number(item.total || 0);
     return acc;
-  }, {
-    activeCount: 0,
-    completedCount: 0,
-    deliveredCount: 0,
-    pendingCount: 0,
-    monthlyRevenue: 0,
-  });
+  }, { activeCount: 0, completedCount: 0, deliveredCount: 0, pendingCount: 0, monthlyRevenue: 0 });
 }
 function buildBars(stats: Stats) {
   const values = [{ label: "Pendientes", value: stats.pendingCount }, { label: "En proceso", value: stats.activeCount }, { label: "Finalizadas", value: stats.completedCount }, { label: "Entregadas", value: stats.deliveredCount }];

@@ -2,21 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiBase, requireToken } from "@/lib/api";
 
 type VehicleLifeItem = {
   work_order_id: number;
   work_order_date?: string | null;
   current_km?: number | null;
   status?: string | null;
-
   item_id: number;
   item_type?: string | null;
   description?: string | null;
   quantity?: number | null;
   unit_price?: number | null;
   subtotal?: number | null;
-
   next_service_km?: number | null;
   next_service_date?: string | null;
   reminder_enabled?: boolean;
@@ -65,6 +63,7 @@ export default function VidaDelAutoPage() {
 
   const [report, setReport] = useState<VehicleLifeReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [error, setError] = useState("");
 
   const vehicleName = [brand, model].filter(Boolean).join(" ");
@@ -77,7 +76,7 @@ export default function VidaDelAutoPage() {
 
         if (!vehicleId || vehicleId === "undefined") {
           setReport(null);
-          setError("No se recibió un ID válido del vehículo. Regresa a la orden y abre Vida del Auto nuevamente.");
+          setError("No se recibió un ID válido del vehículo.");
           return;
         }
 
@@ -112,15 +111,68 @@ export default function VidaDelAutoPage() {
     }));
   }, [report]);
 
+  const handlePdf = async () => {
+    try {
+      if (!vehicleId || vehicleId === "undefined") {
+        throw new Error("No se recibió un ID válido del vehículo.");
+      }
+
+      setPdfLoading(true);
+      setError("");
+
+      const api = getApiBase();
+      const token = requireToken();
+
+      const response = await fetch(
+        `${api}/api/vehicle-life/vehicle/${vehicleId}/pdf`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`No se pudo generar el PDF: ${detail}`);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo generar el PDF.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-slate-950 p-6 text-white">
       <div className="mx-auto max-w-7xl space-y-6">
         <section className="rounded-2xl border border-slate-700 bg-slate-950 p-6 shadow-sm">
-          <p className="text-sm font-semibold text-blue-300">SIADAUTO</p>
-          <h1 className="text-3xl font-bold">Vida del Auto</h1>
-          <p className="mt-1 text-slate-300">
-            Historial inteligente de mantenimiento, reparaciones y próximos cuidados.
-          </p>
+          <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-blue-300">SIADAUTO</p>
+              <h1 className="text-3xl font-bold">Vida del Auto</h1>
+              <p className="mt-1 text-slate-300">
+                Historial inteligente de mantenimiento, reparaciones y próximos cuidados.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handlePdf}
+              disabled={pdfLoading || !vehicleId || vehicleId === "undefined"}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span>📄</span>
+              <span>{pdfLoading ? "Generando PDF..." : "Generar reporte PDF"}</span>
+            </button>
+          </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-4">
             <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">

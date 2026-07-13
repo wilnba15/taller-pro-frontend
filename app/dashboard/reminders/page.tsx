@@ -6,11 +6,13 @@ import { apiFetch } from "@/lib/api";
 
 type ReminderStatus = "vencido" | "hoy" | "urgente" | "proximo" | "programado" | "enviado";
 type ReminderSummary = { vencido: number; hoy: number; urgente: number; proximo: number; programado: number; enviado: number; total: number };
+type IncludedItem = { item_id: number; item_type?: string | null; description: string };
 type Reminder = {
   item_id: number; work_order_id: number; work_order_number: number; client_id: number;
   client_name?: string | null; client_phone?: string | null; vehicle_id: number;
   vehicle?: string | null; plate?: string | null; year?: number | null;
-  service_description: string; last_service_date?: string | null; next_service_date: string;
+  service_description: string; included_items?: IncludedItem[]; group_item_ids?: number[];
+  last_service_date?: string | null; next_service_date: string;
   days_remaining: number; status: ReminderStatus; reminder_enabled: boolean; reminder_sent: boolean;
   whatsapp_message: string; whatsapp_url?: string | null;
 };
@@ -135,11 +137,24 @@ export default function RemindersPage() {
                 const isWorking = actionId === reminder.item_id;
                 const hasValidPhone = Boolean(normalizeEcuadorPhone(reminder.client_phone));
                 return (
-                  <article key={reminder.item_id} className="rounded-2xl border border-slate-800 bg-slate-950 p-5">
+                  <article key={`${reminder.work_order_id}-${reminder.next_service_date}-${reminder.item_id}`} className="rounded-2xl border border-slate-800 bg-slate-950 p-5">
                     <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="mb-3 flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLE[reminder.status]}`}>{STATUS_LABEL[reminder.status]}</span><span className="text-sm text-slate-400">{daysText(reminder.days_remaining)}</span></div>
                         <h3 className="text-xl font-bold">{reminder.service_description}</h3>
+
+                        {reminder.included_items && reminder.included_items.length > 1 ? (
+                          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Incluye</p>
+                            <div className="flex flex-wrap gap-2">
+                              {reminder.included_items.map((item) => (
+                                <span key={item.item_id} className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
+                                  {item.description}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                         <div className="mt-3 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
                           <div><p className="text-slate-500">Cliente</p><p className="font-semibold text-slate-200">{reminder.client_name || "Sin nombre"}</p><p className="text-slate-400">{reminder.client_phone || "Sin teléfono"}</p></div>
                           <div><p className="text-slate-500">Vehículo</p><p className="font-semibold text-slate-200">{reminder.vehicle || "Vehículo"}</p><p className="text-slate-400">{reminder.plate || "Sin placa"}</p></div>

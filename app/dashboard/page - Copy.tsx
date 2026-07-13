@@ -7,9 +7,6 @@ import { apiFetch, clearSession, getUserName, getWorkshopId } from "@/lib/api";
 type Client = { id: number };
 type Vehicle = { id: number };
 type WorkOrder = { id: number; status: string; total: string | number; created_at?: string };
-type ReminderSummary = { vencido: number; hoy: number; urgente: number; proximo: number; programado: number; enviado: number; total: number };
-
-const EMPTY_REMINDERS: ReminderSummary = { vencido: 0, hoy: 0, urgente: 0, proximo: 0, programado: 0, enviado: 0, total: 0 };
 
 function formatMoney(value: string | number) {
   const num = typeof value === "string" ? Number(value) : value;
@@ -20,7 +17,6 @@ export default function DashboardPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [reminders, setReminders] = useState<ReminderSummary>(EMPTY_REMINDERS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [userName, setUserName] = useState("");
@@ -32,16 +28,14 @@ export default function DashboardPage() {
 
     async function loadData() {
       try {
-        const [clientsData, vehiclesData, workOrdersData, reminderData] = await Promise.all([
+        const [clientsData, vehiclesData, workOrdersData] = await Promise.all([
           apiFetch<Client[]>("/clients/"),
           apiFetch<Vehicle[]>("/vehicles/"),
           apiFetch<WorkOrder[]>("/work-orders/"),
-          apiFetch<ReminderSummary>("/reminders/summary"),
         ]);
         setClients(clientsData);
         setVehicles(vehiclesData);
         setWorkOrders(workOrdersData);
-        setReminders(reminderData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar el dashboard");
       } finally {
@@ -61,7 +55,6 @@ export default function DashboardPage() {
   const totalWorkOrders = workOrders.length;
   const pendingOrders = workOrders.filter((order) => order.status?.toLowerCase() === "pendiente").length;
   const totalSales = workOrders.reduce((acc, order) => acc + Number(order.total || 0), 0);
-  const attentionReminders = reminders.vencido + reminders.hoy + reminders.urgente;
   const recentOrders = [...workOrders].sort((a, b) => {
     const da = a.created_at ? new Date(a.created_at).getTime() : 0;
     const db = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -94,20 +87,15 @@ export default function DashboardPage() {
             <Link href="/dashboard/clients" className="rounded-xl bg-slate-800 px-4 py-2 hover:bg-slate-700">Clientes</Link>
             <Link href="/dashboard/vehicles" className="rounded-xl bg-slate-800 px-4 py-2 hover:bg-slate-700">Vehículos</Link>
             <Link href="/dashboard/work-orders" className="rounded-xl bg-slate-800 px-4 py-2 hover:bg-slate-700">Órdenes</Link>
-            <Link href="/dashboard/reminders" className="rounded-xl bg-blue-600 px-4 py-2 font-semibold hover:bg-blue-500">🔔 Recordatorios</Link>
             <button onClick={handleLogout} className="rounded-xl bg-red-600 px-4 py-2 hover:bg-red-500">Salir</button>
           </div>
         </div>
 
-        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5 mb-8">
+        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-lg"><p className="text-sm text-slate-400">Total clientes</p><h2 className="text-3xl font-bold mt-2">{totalClients}</h2></div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-lg"><p className="text-sm text-slate-400">Total vehículos</p><h2 className="text-3xl font-bold mt-2">{totalVehicles}</h2></div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-lg"><p className="text-sm text-slate-400">Órdenes de trabajo</p><h2 className="text-3xl font-bold mt-2">{totalWorkOrders}</h2></div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-lg"><p className="text-sm text-slate-400">Órdenes pendientes</p><h2 className="text-3xl font-bold mt-2">{pendingOrders}</h2></div>
-          <Link href="/dashboard/reminders" className="rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-500/20 to-red-500/10 p-5 shadow-lg transition hover:border-amber-400">
-            <div className="flex items-start justify-between"><div><p className="text-sm text-amber-200">Mantenimientos por atender</p><h2 className="text-3xl font-bold mt-2">{attentionReminders}</h2></div><span className="text-2xl">🔔</span></div>
-            <p className="mt-3 text-xs text-slate-300">{reminders.vencido} vencidos · {reminders.hoy} para hoy · {reminders.urgente} urgentes</p>
-          </Link>
         </section>
 
         <section className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-8">

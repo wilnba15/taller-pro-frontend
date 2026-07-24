@@ -106,6 +106,9 @@ export default function AdminPage() {
           phone: form.phone,
           email: form.email,
           address: form.address,
+          admin_name: form.admin_name,
+          admin_email: form.admin_email,
+          admin_password: form.admin_password || undefined,
         });
         setMessage("Taller actualizado correctamente.");
       } else {
@@ -208,13 +211,27 @@ export default function AdminPage() {
               <Field label="Correo del taller" type="email" value={form.email} onChange={(value) => updateField("email", value)} />
               <Field label="Dirección" value={form.address} onChange={(value) => updateField("address", value)} />
 
-              {!editingId && (
-                <>
-                  <Field label="Nombre del usuario administrador *" value={form.admin_name} onChange={(value) => updateField("admin_name", value)} required />
-                  <Field label="Correo para ingresar *" type="email" value={form.admin_email} onChange={(value) => updateField("admin_email", value)} required />
-                  <Field label="Contraseña inicial *" type="password" value={form.admin_password} onChange={(value) => updateField("admin_password", value)} required minLength={6} />
-                </>
-              )}
+              <Field
+                label="Nombre del usuario administrador *"
+                value={form.admin_name}
+                onChange={(value) => updateField("admin_name", value)}
+                required
+              />
+              <Field
+                label="Correo para ingresar *"
+                type="email"
+                value={form.admin_email}
+                onChange={(value) => updateField("admin_email", value)}
+                required
+              />
+              <Field
+                label={editingId ? "Nueva contraseña (opcional)" : "Contraseña inicial *"}
+                type="password"
+                value={form.admin_password}
+                onChange={(value) => updateField("admin_password", value)}
+                required={!editingId}
+                minLength={form.admin_password ? 6 : undefined}
+              />
             </div>
 
             <div className="mt-5 flex gap-3">

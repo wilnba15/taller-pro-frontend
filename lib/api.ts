@@ -66,6 +66,9 @@ export type AdminWorkshopUpdate = {
   phone?: string;
   email?: string;
   address?: string;
+  admin_name?: string;
+  admin_email?: string;
+  admin_password?: string;
 };
 
 const TOKEN_KEY = "siadauto_token";

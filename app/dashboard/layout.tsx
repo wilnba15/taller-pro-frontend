@@ -55,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               href="/dashboard/admin"
               className="col-span-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 font-semibold text-amber-200 transition hover:bg-amber-500/20"
             >
-              ⚙️ Administración SIADAUTO
+              ⚙️ Administración
             </Link>
           )}
         </nav>

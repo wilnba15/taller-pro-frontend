@@ -133,6 +133,18 @@ export function requireToken() {
   return token;
 }
 
+async function readApiError(res: Response) {
+  const text = await res.text();
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed.detail === "string") return parsed.detail;
+    if (parsed.detail?.message) return parsed.detail.message;
+    return text;
+  } catch {
+    return text || "Ocurrió un error";
+  }
+}
+
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = requireToken();
   const api = getApiBase();
@@ -153,18 +165,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     throw new Error("Sesión vencida o no autorizada");
   }
 
-  if (!res.ok) {
-    const text = await res.text();
-    let message = text;
-    try {
-      const parsed = JSON.parse(text);
-      message = parsed.detail || text;
-    } catch {
-      // Se conserva el texto original.
-    }
-    throw new Error(message);
-  }
-
+  if (!res.ok) throw new Error(await readApiError(res));
   return res.json();
 }
 
@@ -177,6 +178,29 @@ export function updateMyWorkshop(data: WorkshopProfileUpdate) {
     method: "PUT",
     body: JSON.stringify(data),
   });
+}
+
+export async function uploadMyWorkshopLogo(file: File) {
+  const token = requireToken();
+  const api = getApiBase();
+  const formData = new FormData();
+  formData.append("logo", file);
+
+  const res = await fetch(`${api}/workshops/me/logo`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    clearSession();
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new Error("Sesión vencida o no autorizada");
+  }
+
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json() as Promise<WorkshopProfile>;
 }
 
 export function getAdminWorkshops() {

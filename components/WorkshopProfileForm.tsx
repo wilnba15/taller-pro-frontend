@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import {
   getMyWorkshop,
   updateMyWorkshop,
+  uploadMyWorkshopLogo,
   type WorkshopProfile,
   type WorkshopProfileUpdate,
 } from "@/lib/api";
@@ -52,9 +53,11 @@ function toNullable(value: string) {
 }
 
 export default function WorkshopProfileForm() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -69,13 +72,41 @@ export default function WorkshopProfileForm() {
         setLoading(false);
       }
     }
-
     loadProfile();
   }, []);
 
   function updateField(field: keyof FormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
     setSuccess("");
+  }
+
+  async function handleLogoSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Selecciona una imagen JPG, PNG o WEBP.");
+      return;
+    }
+
+    if (file.size > 3 * 1024 * 1024) {
+      setError("El logo no puede superar los 3 MB.");
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      setError("");
+      setSuccess("");
+      const updated = await uploadMyWorkshopLogo(file);
+      setForm(profileToForm(updated));
+      setSuccess("Logo cargado correctamente.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cargar el logo");
+    } finally {
+      setUploadingLogo(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -108,11 +139,7 @@ export default function WorkshopProfileForm() {
   }
 
   if (loading) {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-300">
-        Cargando perfil del taller...
-      </div>
-    );
+    return <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-300">Cargando perfil del taller...</div>;
   }
 
   return (
@@ -120,9 +147,7 @@ export default function WorkshopProfileForm() {
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-lg">
         <div className="mb-6">
           <h2 className="text-xl font-semibold">Identificación del taller</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Datos que identificarán al taller dentro de SIADAUTO y en sus documentos.
-          </p>
+          <p className="mt-1 text-sm text-slate-400">Datos que identificarán al taller dentro de SIADAUTO y en sus documentos.</p>
         </div>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -150,24 +175,40 @@ export default function WorkshopProfileForm() {
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-lg">
         <div className="mb-6">
-          <h2 className="text-xl font-semibold">Imagen y documentos</h2>
-          <p className="mt-1 text-sm text-slate-400">Logo y texto que se utilizarán posteriormente en los PDF.</p>
+          <h2 className="text-xl font-semibold">Logo del taller</h2>
+          <p className="mt-1 text-sm text-slate-400">Selecciona una imagen JPG, PNG o WEBP de máximo 3 MB.</p>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <Field label="URL del logo" value={form.logo_url} onChange={(v) => updateField("logo_url", v)} placeholder="https://.../logo.png" />
-            <p className="mt-2 text-xs text-slate-500">
-              En este sprint se registra la dirección pública del logo. La carga directa del archivo se implementará después.
+          <div className="space-y-4 lg:col-span-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleLogoSelected}
+              className="hidden"
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingLogo}
+              className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {uploadingLogo ? "Cargando logo..." : form.logo_url ? "Cambiar logo" : "Seleccionar logo"}
+            </button>
+
+            <p className="text-sm text-slate-400">
+              El archivo se carga automáticamente y queda guardado en el perfil del taller.
             </p>
           </div>
 
-          <div className="flex min-h-36 items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-950 p-4">
+          <div className="flex min-h-40 items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-950 p-4">
             {form.logo_url.trim() ? (
-              <img src={form.logo_url} alt="Logo del taller" className="max-h-28 max-w-full object-contain" />
+              <img src={form.logo_url} alt="Logo del taller" className="max-h-32 max-w-full object-contain" />
             ) : (
               <div className="text-center text-sm text-slate-500">
-                <div className="mb-2 text-3xl">🏢</div>
+                <div className="mb-2 text-4xl">🏢</div>
                 Vista previa del logo
               </div>
             )}
@@ -194,7 +235,7 @@ export default function WorkshopProfileForm() {
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={saving || !form.name.trim()}
+          disabled={saving || uploadingLogo || !form.name.trim()}
           className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving ? "Guardando..." : "Guardar cambios"}

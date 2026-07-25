@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { changeMyPassword } from "@/lib/api";
+import { changeMyPassword, clearSession } from "@/lib/api";
 
 export default function ChangePasswordPage() {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -29,19 +29,28 @@ export default function ChangePasswordPage() {
 
     try {
       setSaving(true);
+
       const response = await changeMyPassword({
         current_password: currentPassword,
         new_password: newPassword,
         confirm_password: confirmPassword,
       });
 
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setSuccess(response.message);
+      setSuccess(`${response.message}. Ingresa nuevamente con tu nueva contraseña.`);
+
+      // Eliminamos la sesión actual para obligar al usuario
+      // a ingresar con la nueva contraseña.
+      clearSession();
+
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cambiar la contraseña");
-    } finally {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo cambiar la contraseña"
+      );
       setSaving(false);
     }
   }
@@ -53,7 +62,11 @@ export default function ChangePasswordPage() {
           <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-blue-400">
             Seguridad
           </p>
-          <h1 className="text-3xl font-bold md:text-4xl">🔐 Cambiar contraseña</h1>
+
+          <h1 className="text-3xl font-bold md:text-4xl">
+            🔐 Cambiar contraseña
+          </h1>
+
           <p className="mt-2 text-slate-400">
             Actualiza tu clave de acceso a SIADAUTO.
           </p>
@@ -91,7 +104,10 @@ export default function ChangePasswordPage() {
             <input
               type="checkbox"
               checked={showPasswords}
-              onChange={(event) => setShowPasswords(event.target.checked)}
+              onChange={(event) =>
+                setShowPasswords(event.target.checked)
+              }
+              disabled={saving}
               className="h-4 w-4"
             />
             Mostrar contraseñas
@@ -119,7 +135,11 @@ export default function ChangePasswordPage() {
             }
             className="w-full rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? "Guardando..." : "Guardar nueva contraseña"}
+            {saving
+              ? success
+                ? "Redirigiendo al login..."
+                : "Guardando..."
+              : "Guardar nueva contraseña"}
           </button>
         </form>
       </div>
@@ -145,6 +165,7 @@ function PasswordField({
       <label className="mb-2 block text-sm font-medium text-slate-300">
         {label}
       </label>
+
       <input
         type={visible ? "text" : "password"}
         value={value}
@@ -153,7 +174,7 @@ function PasswordField({
         minLength={label === "Contraseña actual" ? 1 : 6}
         maxLength={72}
         autoComplete={autoComplete}
-        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-blue-500 disabled:opacity-60"
       />
     </div>
   );

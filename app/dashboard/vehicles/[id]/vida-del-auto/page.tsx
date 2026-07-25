@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { apiFetch, getApiBase, requireToken } from "@/lib/api";
+import { apiFetch, getApiBase, getMyWorkshop, requireToken, type WorkshopProfile } from "@/lib/api";
 
 type VehicleLifeItem = {
   work_order_id: number;
@@ -62,6 +62,7 @@ export default function VidaDelAutoPage() {
   const clientName = searchParams.get("client") || "";
 
   const [report, setReport] = useState<VehicleLifeReport | null>(null);
+  const [workshop, setWorkshop] = useState<WorkshopProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [error, setError] = useState("");
@@ -80,10 +81,15 @@ export default function VidaDelAutoPage() {
           return;
         }
 
-        const data = await apiFetch<VehicleLifeReport>(
-          `/api/vehicle-life/vehicle/${vehicleId}`
-        );
+        const [data, workshopData] = await Promise.all([
+          apiFetch<VehicleLifeReport>(
+            `/api/vehicle-life/vehicle/${vehicleId}`
+          ),
+          getMyWorkshop(),
+        ]);
+
         setReport(data);
+        setWorkshop(workshopData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar la Vida del Auto.");
       } finally {
@@ -155,12 +161,30 @@ export default function VidaDelAutoPage() {
       <div className="mx-auto max-w-7xl space-y-6">
         <section className="rounded-2xl border border-slate-700 bg-slate-950 p-6 shadow-sm">
           <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-blue-300">SIADAUTO</p>
-              <h1 className="text-3xl font-bold">Vida del Auto</h1>
-              <p className="mt-1 text-slate-300">
-                Historial inteligente de mantenimiento, reparaciones y próximos cuidados.
-              </p>
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-700 bg-slate-900">
+                {workshop?.logo_url ? (
+                  <img
+                    src={workshop.logo_url}
+                    alt={`Logo de ${workshop.name}`}
+                    className="h-full w-full object-contain p-2"
+                  />
+                ) : (
+                  <span className="text-3xl font-bold text-blue-400">
+                    {(workshop?.name || "S").charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold uppercase tracking-wide text-blue-300">
+                  {workshop?.name || "Taller"}
+                </p>
+                <h1 className="text-3xl font-bold">Vida del Auto</h1>
+                <p className="mt-1 text-slate-300">
+                  Historial inteligente de mantenimiento, reparaciones y próximos cuidados.
+                </p>
+              </div>
             </div>
 
             <button

@@ -207,17 +207,41 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-slate-950 p-6 text-white">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-7 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold md:text-4xl">
-              🏢 {(workshop?.name || "TALLER").toUpperCase()}
-            </h1>
-            <p className="mt-2 text-slate-400">Gestión Automotriz</p>
+        <header className="mb-7 flex flex-col gap-4 border-b border-slate-800 pb-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-700 bg-slate-900">
+              {workshop?.logo_url ? (
+                <img
+                  src={workshop.logo_url}
+                  alt={`Logo de ${workshop.name}`}
+                  className="h-full w-full object-contain p-2"
+                />
+              ) : (
+                <span className="text-3xl font-bold text-blue-400">
+                  {(workshop?.name || "S").charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+
+            <div className="min-w-0">
+              <h1 className="truncate text-3xl font-bold md:text-4xl">
+                {(workshop?.name || "TALLER").toUpperCase()}
+              </h1>
+              <p className="mt-1 text-sm text-slate-400">
+                {[workshop?.phone, workshop?.email].filter(Boolean).join(" · ") ||
+                  "Gestión automotriz"}
+              </p>
+              {workshop?.address ? (
+                <p className="mt-1 truncate text-xs text-slate-500">
+                  {workshop.address}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           <button
             onClick={handleLogout}
-            className="rounded-xl bg-red-600 px-5 py-2.5 font-semibold transition hover:bg-red-500"
+            className="self-start rounded-xl bg-red-600 px-5 py-2.5 font-semibold transition hover:bg-red-500 sm:self-auto"
           >
             Salir
           </button>

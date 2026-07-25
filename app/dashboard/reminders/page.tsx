@@ -109,7 +109,7 @@ export default function RemindersPage() {
       <div className="mx-auto max-w-7xl space-y-6">
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-lg">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div><p className="text-sm font-semibold text-blue-300">SIADAUTO</p><h1 className="text-3xl font-bold">Recordatorios de mantenimiento</h1><p className="mt-2 max-w-3xl text-slate-400">Próximos servicios calculados por la fecha estimada registrada en cada orden de trabajo.</p></div>
+            <div><p className="text-sm font-semibold text-blue-300"></p><h1 className="text-3xl font-bold">Recordatorios de mantenimiento</h1><p className="mt-2 max-w-3xl text-slate-400">Próximos servicios calculados por la fecha estimada registrada en cada orden de trabajo.</p></div>
             <div className="flex flex-wrap gap-3"><button type="button" onClick={loadReminders} disabled={loading} className="rounded-xl bg-slate-800 px-4 py-2 font-semibold hover:bg-slate-700 disabled:opacity-60">{loading ? "Actualizando..." : "↻ Actualizar"}</button><Link href="/dashboard" className="rounded-xl bg-blue-600 px-4 py-2 font-semibold hover:bg-blue-500">Volver al Dashboard</Link></div>
           </div>
         </section>

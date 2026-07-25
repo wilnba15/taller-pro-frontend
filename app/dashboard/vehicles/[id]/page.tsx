@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import jsPDF from "jspdf";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getMyWorkshop, type WorkshopProfile } from "@/lib/api";
 
 type Vehicle = {
   id: number;
@@ -44,15 +44,6 @@ type VehicleForm = {
   notes: string;
 };
 
-const WORKSHOP_CONFIG = {
-  name: "ELECTROAUTO",
-  slogan: "Laboratorio Automotriz",
-  phone: "098-717-8172",
-  address: "Av. Río Zamora y Ushimana (Sector Alangasí)",
-  schedule: "Lunes a Viernes 07:30 - 17:30 | Sábados 08:30 - 14:00",
-  logoText: "EA",
-};
-
 function splitInspectionNotes(notes?: string | null) {
   if (!notes) return { generalNotes: "", inspectionText: "" };
 
@@ -67,72 +58,144 @@ function splitInspectionNotes(notes?: string | null) {
   };
 }
 
-function generateReceptionPDF(vehicle: Vehicle, client: Client | null) {
+async function imageUrlToDataUrl(url?: string | null) {
+  if (!url) return null;
+
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return null;
+
+    const blob = await response.blob();
+
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () =>
+        typeof reader.result === "string"
+          ? resolve(reader.result)
+          : reject(new Error("No se pudo leer el logo"));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function generateReceptionPDF(
+  vehicle: Vehicle,
+  client: Client | null,
+  workshop: WorkshopProfile | null
+) {
   const doc = new jsPDF();
   const { generalNotes, inspectionText } = splitInspectionNotes(vehicle.notes);
+  const logoDataUrl = await imageUrlToDataUrl(workshop?.logo_url);
 
   doc.setDrawColor(30, 41, 59);
   doc.setLineWidth(0.4);
 
-  doc.rect(12, 10, 186, 34);
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.4);
+  doc.rect(12, 10, 186, 46);
+
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, "AUTO", 17, 15, 34, 30, undefined, "FAST");
+    } catch {
+      // El documento continúa aunque el formato del logo no sea compatible.
+    }
+  }
+
+  const workshopName = workshop?.name || "Taller";
+  const identityX = logoDataUrl ? 58 : 18;
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text(WORKSHOP_CONFIG.name, 18, 23);
+  doc.setFontSize(15);
+  doc.text(workshopName, identityX, 20);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+
+  let identityY = 26;
+
+  if (workshop?.business_name && workshop.business_name !== workshopName) {
+    doc.text(workshop.business_name, identityX, identityY);
+    identityY += 5;
+  }
+
+  if (workshop?.ruc) {
+    doc.text(`RUC: ${workshop.ruc}`, identityX, identityY);
+    identityY += 5;
+  }
+
+  const contact = [workshop?.phone, workshop?.email]
+    .filter(Boolean)
+    .join(" · ");
+
+  if (contact) {
+    doc.text(contact, identityX, identityY, { maxWidth: 132 });
+    identityY += 5;
+  }
+
+  if (workshop?.address) {
+    doc.text(workshop.address, identityX, identityY, { maxWidth: 132 });
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("ACTA DE RECEPCIÓN DEL VEHÍCULO", 55, 68);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.text(WORKSHOP_CONFIG.slogan, 18, 30);
-  doc.text(WORKSHOP_CONFIG.schedule, 18, 36);
-  doc.text(`Teléfono: ${WORKSHOP_CONFIG.phone}`, 125, 23);
-  doc.text(`Dirección: ${WORKSHOP_CONFIG.address}`, 125, 30, { maxWidth: 65 });
+  doc.text(`Fecha: ${new Date().toLocaleDateString("es-EC")}`, 14, 78);
+  doc.text(`No. Vehículo: ${String(vehicle.id).padStart(6, "0")}`, 150, 78);
 
+  doc.rect(12, 84, 186, 34);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("ACTA DE RECEPCIÓN DEL VEHÍCULO", 58, 55);
-
+  doc.text("Datos del cliente", 16, 92);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`Fecha: ${new Date().toLocaleDateString("es-EC")}`, 14, 65);
-  doc.text(`No. Vehículo: ${String(vehicle.id).padStart(6, "0")}`, 150, 65);
+  doc.text(`Nombre: ${client?.full_name || "-"}`, 16, 101);
+  doc.text(`CI/RUC: ${client?.identification || "-"}`, 16, 109);
+  doc.text(`Teléfono: ${client?.phone || "-"}`, 108, 101);
+  doc.text(`Email: ${client?.email || "-"}`, 108, 109);
 
-  doc.rect(12, 72, 186, 34);
+  doc.rect(12, 124, 186, 40);
   doc.setFont("helvetica", "bold");
-  doc.text("Datos del cliente", 16, 80);
+  doc.text("Datos del vehículo", 16, 132);
   doc.setFont("helvetica", "normal");
-  doc.text(`Nombre: ${client?.full_name || "-"}`, 16, 89);
-  doc.text(`CI/RUC: ${client?.identification || "-"}`, 16, 97);
-  doc.text(`Teléfono: ${client?.phone || "-"}`, 108, 89);
-  doc.text(`Email: ${client?.email || "-"}`, 108, 97);
+  doc.text(`Placa: ${vehicle.plate || "-"}`, 16, 142);
+  doc.text(`Marca: ${vehicle.brand || "-"}`, 16, 151);
+  doc.text(`Modelo: ${vehicle.model || "-"}`, 74, 151);
+  doc.text(`Año: ${vehicle.year || "-"}`, 140, 151);
+  doc.text(`Color: ${vehicle.color || "-"}`, 16, 160);
+  doc.text(`Kilometraje: ${vehicle.mileage ?? "-"}`, 74, 160);
+  doc.text(`Combustible: ${vehicle.fuel_type || "-"}`, 140, 160);
 
-  doc.rect(12, 112, 186, 40);
+  doc.rect(12, 170, 186, 42);
   doc.setFont("helvetica", "bold");
-  doc.text("Datos del vehículo", 16, 120);
+  doc.text("Observaciones generales", 16, 178);
   doc.setFont("helvetica", "normal");
-  doc.text(`Placa: ${vehicle.plate || "-"}`, 16, 130);
-  doc.text(`Marca: ${vehicle.brand || "-"}`, 16, 139);
-  doc.text(`Modelo: ${vehicle.model || "-"}`, 74, 139);
-  doc.text(`Año: ${vehicle.year || "-"}`, 140, 139);
-  doc.text(`Color: ${vehicle.color || "-"}`, 16, 148);
-  doc.text(`Kilometraje: ${vehicle.mileage ?? "-"}`, 74, 148);
-  doc.text(`Combustible: ${vehicle.fuel_type || "-"}`, 140, 148);
+  doc.text(doc.splitTextToSize(generalNotes || "-", 176), 16, 187);
 
-  doc.rect(12, 158, 186, 46);
+  doc.rect(12, 218, 186, 38);
   doc.setFont("helvetica", "bold");
-  doc.text("Observaciones generales", 16, 166);
+  doc.text("Inspección visual de ingreso", 16, 226);
   doc.setFont("helvetica", "normal");
-  doc.text(doc.splitTextToSize(generalNotes || "-", 176), 16, 175);
+  doc.text(doc.splitTextToSize(inspectionText || "-", 176), 16, 235);
 
-  doc.rect(12, 210, 186, 42);
+  doc.line(28, 273, 82, 273);
+  doc.line(126, 273, 180, 273);
   doc.setFont("helvetica", "bold");
-  doc.text("Inspección visual de ingreso", 16, 218);
-  doc.setFont("helvetica", "normal");
-  doc.text(doc.splitTextToSize(inspectionText || "-", 176), 16, 227);
+  doc.text("Firma Taller", 43, 281);
+  doc.text("Firma Cliente", 140, 281);
 
-  doc.line(28, 278, 82, 278);
-  doc.line(126, 278, 180, 278);
-  doc.setFont("helvetica", "bold");
-  doc.text("Firma Taller", 43, 286);
-  doc.text("Firma Cliente", 140, 286);
+  if (workshop?.footer_text) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    const footerLines = doc.splitTextToSize(workshop.footer_text, 176);
+    doc.text(footerLines, 105, 291, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+  }
 
   doc.save(`recepcion-vehiculo-${vehicle.plate || vehicle.id}.pdf`);
 }
@@ -150,6 +213,8 @@ export default function VehicleDetailPage() {
 
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [workshop, setWorkshop] = useState<WorkshopProfile | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [form, setForm] = useState<VehicleForm>({
     client_id: "",
     plate: "",
@@ -182,13 +247,15 @@ export default function VehicleDetailPage() {
         setLoading(true);
         setError("");
 
-        const [vehicleData, clientsData] = await Promise.all([
+        const [vehicleData, clientsData, workshopData] = await Promise.all([
           apiFetch<Vehicle>(`/vehicles/${vehicleId}`),
           apiFetch<Client[]>("/clients/"),
+          getMyWorkshop(),
         ]);
 
         setVehicle(vehicleData);
         setClients(clientsData);
+        setWorkshop(workshopData);
 
         setForm({
           client_id: String(vehicleData.client_id),
@@ -257,6 +324,24 @@ export default function VehicleDetailPage() {
     }
   };
 
+  const handleReceptionPdf = async () => {
+    if (!vehicle) return;
+
+    try {
+      setPdfLoading(true);
+      setError("");
+      await generateReceptionPDF(vehicle, selectedClient, workshop);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo generar el PDF de recepción"
+      );
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   if (loading) {
     return <main className="min-h-screen bg-slate-950 text-white p-6">Cargando vehículo...</main>;
   }
@@ -286,10 +371,11 @@ export default function VehicleDetailPage() {
             {vehicle ? (
               <button
                 type="button"
-                onClick={() => generateReceptionPDF(vehicle, selectedClient)}
-                className="rounded-xl bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition"
+                onClick={handleReceptionPdf}
+                disabled={pdfLoading}
+                className="rounded-xl bg-emerald-600 px-4 py-2 font-medium transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                📄 PDF recepción
+                {pdfLoading ? "Generando PDF..." : "📄 PDF recepción"}
               </button>
             ) : null}
 

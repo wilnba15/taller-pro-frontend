@@ -71,6 +71,12 @@ export type AdminWorkshopUpdate = {
   admin_password?: string;
 };
 
+export type ChangePasswordData = {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+};
+
 const TOKEN_KEY = "siadauto_token";
 const USER_NAME_KEY = "siadauto_user_name";
 const WORKSHOP_ID_KEY = "siadauto_workshop_id";
@@ -195,5 +201,12 @@ export function changeAdminWorkshopStatus(workshopId: number, status: "activo" |
   return apiFetch<{ message: string }>(`/admin/workshops/${workshopId}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+}
+
+export function changeMyPassword(data: ChangePasswordData) {
+  return apiFetch<{ message: string }>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(data),
   });
 }

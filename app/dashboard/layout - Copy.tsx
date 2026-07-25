@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getRole } from "@/lib/api";
 
 const menuItems = [
   { href: "/dashboard", label: "🏠 Dashboard" },
@@ -10,12 +14,20 @@ const menuItems = [
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
+
+  useEffect(() => {
+    setIsSuperadmin(getRole() === "superadmin");
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white md:flex">
       <aside className="border-b border-slate-800 bg-slate-900 p-5 md:min-h-screen md:w-64 md:border-b-0 md:border-r md:p-6">
         <div className="mb-6">
           <h2 className="text-2xl font-bold tracking-tight">SIADAUTO</h2>
-          <p className="mt-1 text-xs text-slate-400">Gestión eficiente del taller</p>
+          <p className="mt-1 text-xs leading-5 text-slate-400">
+            Sistema para la Administración de Talleres Automotrices
+          </p>
         </div>
 
         <nav className="grid grid-cols-2 gap-2 text-sm md:flex md:flex-col md:gap-2">
@@ -37,6 +49,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           >
             🏢 Perfil del Taller
           </Link>
+
+          {isSuperadmin && (
+            <Link
+              href="/dashboard/admin"
+              className="col-span-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 font-semibold text-amber-200 transition hover:bg-amber-500/20"
+            >
+              ⚙️ Administración
+            </Link>
+          )}
         </nav>
       </aside>
 

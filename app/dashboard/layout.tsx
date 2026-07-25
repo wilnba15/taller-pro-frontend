@@ -50,6 +50,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             🏢 Perfil del Taller
           </Link>
 
+          <Link
+            href="/dashboard/change-password"
+            className="col-span-2 rounded-xl border border-slate-700 px-3 py-2.5 font-semibold text-slate-200 transition hover:bg-slate-800"
+          >
+            🔐 Cambiar contraseña
+          </Link>
+
           {isSuperadmin && (
             <Link
               href="/dashboard/admin"

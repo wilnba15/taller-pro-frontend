@@ -44,7 +44,7 @@ export default function LoginPage() {
             S
           </div>
           <h1 className="text-3xl font-bold">SIADAUTO</h1>
-          <p className="mt-2 text-sm text-slate-400">Acceso seguro para ELECTROAUTO</p>
+          
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">

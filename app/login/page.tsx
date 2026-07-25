@@ -6,8 +6,8 @@ import { getApiBase, saveSession, type LoginResponse } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("electroauto@gmail.com");
-  const [password, setPassword] = useState("electroauto2026");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 

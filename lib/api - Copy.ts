@@ -18,7 +18,6 @@ export type WorkshopProfile = {
   logo_url: string | null;
   footer_text: string | null;
   setup_completed: boolean;
-  inventory_enabled: boolean;
   status: string;
   created_at: string;
   updated_at: string | null;
@@ -48,7 +47,6 @@ export type AdminWorkshop = {
   created_at: string;
   admin_name: string | null;
   admin_email: string | null;
-  inventory_enabled: boolean;
 };
 
 export type AdminWorkshopCreate = {
@@ -60,7 +58,6 @@ export type AdminWorkshopCreate = {
   admin_name: string;
   admin_email: string;
   admin_password: string;
-  inventory_enabled?: boolean;
 };
 
 export type AdminWorkshopUpdate = {
@@ -72,7 +69,6 @@ export type AdminWorkshopUpdate = {
   admin_name?: string;
   admin_email?: string;
   admin_password?: string;
-  inventory_enabled?: boolean;
 };
 
 export type ChangePasswordData = {
@@ -236,67 +232,5 @@ export function changeMyPassword(data: ChangePasswordData) {
   return apiFetch<{ message: string }>("/auth/change-password", {
     method: "POST",
     body: JSON.stringify(data),
-  });
-}
-
-export type InventoryProduct = {
-  id: number;
-  workshop_id: number;
-  code: string | null;
-  name: string;
-  category: string | null;
-  brand: string | null;
-  stock: number;
-  minimum_stock: number;
-  cost: number;
-  sale_price: number;
-  is_active: boolean;
-  low_stock: boolean;
-  created_at: string;
-  updated_at: string;
-};
-
-export type InventoryProductPayload = {
-  code?: string | null;
-  name: string;
-  category?: string | null;
-  brand?: string | null;
-  stock: number;
-  minimum_stock: number;
-  cost: number;
-  sale_price: number;
-  is_active: boolean;
-};
-
-export function getInventoryProducts(params?: {
-  search?: string;
-  low_stock?: boolean;
-  include_inactive?: boolean;
-}) {
-  const query = new URLSearchParams();
-  if (params?.search) query.set("search", params.search);
-  if (params?.low_stock) query.set("low_stock", "true");
-  if (params?.include_inactive) query.set("include_inactive", "true");
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return apiFetch<InventoryProduct[]>(`/inventory/${suffix}`);
-}
-
-export function createInventoryProduct(data: InventoryProductPayload) {
-  return apiFetch<InventoryProduct>("/inventory/", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
-export function updateInventoryProduct(productId: number, data: Partial<InventoryProductPayload>) {
-  return apiFetch<InventoryProduct>(`/inventory/${productId}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
-}
-
-export function deactivateInventoryProduct(productId: number) {
-  return apiFetch<{ message: string }>(`/inventory/${productId}`, {
-    method: "DELETE",
   });
 }

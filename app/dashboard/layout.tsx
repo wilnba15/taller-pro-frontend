@@ -95,6 +95,15 @@ export default function DashboardLayout({
             </Link>
           ))}
 
+          {workshop?.inventory_enabled ? (
+            <Link
+              href="/dashboard/inventory"
+              className="rounded-xl px-3 py-2.5 text-slate-200 transition hover:bg-slate-800 hover:text-white"
+            >
+              📦 Inventario
+            </Link>
+          ) : null}
+
           <div className="col-span-2 my-2 hidden border-t border-slate-800 md:block" />
 
           <Link

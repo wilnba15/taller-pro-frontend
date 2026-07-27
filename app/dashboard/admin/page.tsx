@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   AdminWorkshop,
+  changeAdminWorkshopInventory,
   changeAdminWorkshopStatus,
   createAdminWorkshop,
   getAdminWorkshops,
@@ -114,7 +115,17 @@ export default function AdminPage() {
           admin_password: form.admin_password || undefined,
           inventory_enabled: form.inventory_enabled,
         });
-        setMessage("Taller actualizado correctamente.");
+
+        await changeAdminWorkshopInventory(
+          editingId,
+          form.inventory_enabled
+        );
+
+        setMessage(
+          form.inventory_enabled
+            ? "Taller actualizado e inventario activado correctamente."
+            : "Taller actualizado e inventario desactivado correctamente."
+        );
       } else {
         await createAdminWorkshop(form);
         setMessage("Taller y usuario creados correctamente.");

@@ -232,6 +232,20 @@ export function changeAdminWorkshopStatus(workshopId: number, status: "activo" |
   });
 }
 
+export function changeAdminWorkshopInventory(
+  workshopId: number,
+  inventoryEnabled: boolean
+) {
+  return apiFetch<{
+    message: string;
+    workshop_id: number;
+    inventory_enabled: boolean;
+  }>(`/admin/workshops/${workshopId}/inventory`, {
+    method: "PATCH",
+    body: JSON.stringify({ inventory_enabled: inventoryEnabled }),
+  });
+}
+
 export function changeMyPassword(data: ChangePasswordData) {
   return apiFetch<{ message: string }>("/auth/change-password", {
     method: "POST",

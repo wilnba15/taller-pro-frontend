@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import InventoryProductSearch from "@/components/work-orders/InventoryProductSearch";
+import {
+  apiFetch,
+  getInventoryProducts,
+  getMyWorkshop,
+  type InventoryProduct,
+} from "@/lib/api";
 
 type WorkOrder = {
   id: number;
@@ -66,6 +72,8 @@ type CostItem = {
   id: string;
   dbId?: number;
   type: "labor" | "part";
+  inventory_product_id: string;
+  product_search: string;
   description: string;
   quantity: string;
   unit_price: string;
@@ -77,6 +85,7 @@ type CostItem = {
 type WorkOrderItemDB = {
   id: number;
   work_order_id: number;
+  inventory_product_id?: number | null;
   item_type: "repuesto" | "mano_obra" | string;
   description: string;
   quantity: number | string;
@@ -125,6 +134,8 @@ export default function EditWorkOrderPage() {
 
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
+  const [inventoryEnabled, setInventoryEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -203,8 +214,8 @@ export default function EditWorkOrderPage() {
   });
 
   const [costItems, setCostItems] = useState<CostItem[]>([
-    { id: "labor-initial", type: "labor", description: "Mano de obra", quantity: "1", unit_price: "0", next_service_km: "", next_service_date: "", reminder_enabled: true },
-    { id: "parts-initial", type: "part", description: "Repuestos", quantity: "1", unit_price: "0", next_service_km: "", next_service_date: "", reminder_enabled: true },
+    { id: "labor-initial", type: "labor", inventory_product_id: "", product_search: "", description: "Mano de obra", quantity: "1", unit_price: "0", next_service_km: "", next_service_date: "", reminder_enabled: true },
+    { id: "parts-initial", type: "part", inventory_product_id: "", product_search: "", description: "Repuestos", quantity: "1", unit_price: "0", next_service_km: "", next_service_date: "", reminder_enabled: true },
   ]);
 
   const normalizeCostItemsResponse = (data: any): WorkOrderItemDB[] => {
@@ -217,6 +228,10 @@ export default function EditWorkOrderPage() {
     id: `db-${item.id}`,
     dbId: item.id,
     type: item.item_type === "mano_obra" ? "labor" : "part",
+    inventory_product_id: item.inventory_product_id
+      ? String(item.inventory_product_id)
+      : "",
+    product_search: item.description || "",
     description: item.description || "",
     quantity: String(item.quantity ?? "1"),
     unit_price: String(item.unit_price ?? "0"),
@@ -232,6 +247,10 @@ export default function EditWorkOrderPage() {
     return {
       work_order_id: Number(orderId),
       item_type: item.type === "labor" ? "mano_obra" : "repuesto",
+      inventory_product_id:
+        item.type === "part" && item.inventory_product_id
+          ? Number(item.inventory_product_id)
+          : null,
       description: item.description.trim(),
       quantity,
       unit_price: unitPrice,
@@ -261,6 +280,8 @@ export default function EditWorkOrderPage() {
       {
         id: "labor-initial",
         type: "labor",
+        inventory_product_id: "",
+        product_search: "",
         description: "Mano de obra registrada",
         quantity: "1",
         unit_price: String(order.labor_cost ?? "0"),
@@ -271,6 +292,8 @@ export default function EditWorkOrderPage() {
       {
         id: "parts-initial",
         type: "part",
+        inventory_product_id: "",
+        product_search: "",
         description: "Repuestos registrados",
         quantity: "1",
         unit_price: String(order.parts_cost ?? "0"),
@@ -288,14 +311,28 @@ export default function EditWorkOrderPage() {
       try {
         if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
-        const [order, clientsData, vehiclesData] = await Promise.all([
-          apiFetch<WorkOrder>(`/work-orders/${orderId}`),
-          apiFetch<Client[]>("/clients/"),
-          apiFetch<Vehicle[]>("/vehicles/"),
-        ]);
+        const [order, clientsData, vehiclesData, workshopData] =
+          await Promise.all([
+            apiFetch<WorkOrder>(`/work-orders/${orderId}`),
+            apiFetch<Client[]>("/clients/"),
+            apiFetch<Vehicle[]>("/vehicles/"),
+            getMyWorkshop(),
+          ]);
 
         setClients(clientsData);
         setVehicles(vehiclesData);
+        setInventoryEnabled(workshopData.inventory_enabled);
+
+        if (workshopData.inventory_enabled) {
+          const productsData = await getInventoryProducts({
+            include_inactive: false,
+          });
+          setInventoryProducts(
+            productsData.filter(
+              (product) => product.is_active && Number(product.stock) > 0
+            )
+          );
+        }
 
         setForm({
           workshop_id: order.workshop_id,
@@ -396,7 +433,44 @@ export default function EditWorkOrderPage() {
     value: string
   ) => {
     setCostItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+      prev.map((item) => {
+        if (item.id !== id) return item;
+
+        if (field === "type") {
+          return {
+            ...item,
+            type: value as CostItem["type"],
+            inventory_product_id: "",
+            product_search: "",
+            description: "",
+            unit_price: "0",
+          };
+        }
+
+        return { ...item, [field]: value };
+      })
+    );
+  };
+
+  const selectInventoryProduct = (
+    itemId: string,
+    product: InventoryProduct
+  ) => {
+    setCostItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              inventory_product_id: String(product.id),
+              product_search: `${product.name}${
+                product.code ? ` · ${product.code}` : ""
+              }`,
+              description: product.name,
+              quantity: "1",
+              unit_price: String(product.sale_price),
+            }
+          : item
+      )
     );
   };
 
@@ -406,6 +480,8 @@ export default function EditWorkOrderPage() {
       {
         id: `${type}-${Date.now()}`,
         type,
+        inventory_product_id: "",
+        product_search: "",
         description: "",
         quantity: "1",
         unit_price: "0",
@@ -451,6 +527,24 @@ export default function EditWorkOrderPage() {
         apiFetch(`/work-order-items/${item.id}`, { method: "DELETE" })
       )
     );
+
+    costItems.forEach((item) => {
+      if (!item.inventory_product_id) return;
+
+      const product = inventoryProducts.find(
+        (current) => String(current.id) === item.inventory_product_id
+      );
+
+      if (!product) {
+        throw new Error("Selecciona un producto válido del inventario");
+      }
+
+      if (parseAmount(item.quantity) > Number(product.stock)) {
+        throw new Error(
+          `Stock insuficiente para ${product.name}. Disponible: ${product.stock}`
+        );
+      }
+    });
 
     const validItems = costItems
       .map(buildItemPayload)
@@ -896,7 +990,7 @@ Gracias por confiar en Taller PRO`;
                 <div>
                   <h2 className="text-lg font-semibold">Detalle económico tipo Excel</h2>
                   <p className="text-sm text-slate-400">
-                    Agrega mano de obra y repuestos en filas. El total se calcula automáticamente.
+                    Agrega mano de obra y repuestos. Si el taller tiene inventario, puede seleccionar productos registrados.
                   </p>
                 </div>
 
@@ -917,6 +1011,13 @@ Gracias por confiar en Taller PRO`;
                   </button>
                 </div>
               </div>
+
+              {inventoryEnabled ? (
+                <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  Busca productos por nombre, código, categoría o marca. El stock
+                  se valida, pero todavía no se descuenta.
+                </div>
+              ) : null}
 
               <div className="overflow-x-auto rounded-xl border border-slate-800">
                 <table className="min-w-[1120px] w-full text-sm">
@@ -950,13 +1051,80 @@ Gracias por confiar en Taller PRO`;
                             </select>
                           </td>
                           <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={item.description}
-                              onChange={(e) => handleCostItemChange(item.id, "description", e.target.value)}
-                              placeholder="Ej: Cambio de aceite, filtro, bujía..."
-                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
-                            />
+                            {item.type === "part" && inventoryEnabled ? (
+                              <InventoryProductSearch
+                                itemId={item.id}
+                                searchValue={item.product_search}
+                                selectedProductId={item.inventory_product_id}
+                                products={inventoryProducts}
+                                onSearchChange={(value) =>
+                                  setCostItems((currentItems) =>
+                                    currentItems.map((currentItem) =>
+                                      currentItem.id === item.id
+                                        ? {
+                                            ...currentItem,
+                                            product_search: value,
+                                            inventory_product_id: "",
+                                            description: value,
+                                            unit_price: "0",
+                                          }
+                                        : currentItem
+                                    )
+                                  )
+                                }
+                                onSelectProduct={(product) =>
+                                  selectInventoryProduct(item.id, product)
+                                }
+                                onUseFreeItem={(description) =>
+                                  setCostItems((currentItems) =>
+                                    currentItems.map((currentItem) =>
+                                      currentItem.id === item.id
+                                        ? {
+                                            ...currentItem,
+                                            inventory_product_id: "",
+                                            product_search: description,
+                                            description,
+                                            unit_price: "0",
+                                          }
+                                        : currentItem
+                                    )
+                                  )
+                                }
+                                onClearProduct={() =>
+                                  setCostItems((currentItems) =>
+                                    currentItems.map((currentItem) =>
+                                      currentItem.id === item.id
+                                        ? {
+                                            ...currentItem,
+                                            inventory_product_id: "",
+                                            product_search: "",
+                                            description: "",
+                                            unit_price: "0",
+                                          }
+                                        : currentItem
+                                    )
+                                  )
+                                }
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                value={item.description}
+                                onChange={(event) =>
+                                  handleCostItemChange(
+                                    item.id,
+                                    "description",
+                                    event.target.value
+                                  )
+                                }
+                                placeholder={
+                                  item.type === "labor"
+                                    ? "Ej: Cambio de aceite"
+                                    : "Ej: Filtro, bujía, aceite..."
+                                }
+                                className="w-full min-w-[260px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
+                              />
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             <input

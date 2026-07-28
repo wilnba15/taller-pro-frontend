@@ -512,23 +512,9 @@ export default function EditWorkOrderPage() {
   const saveCostItems = async () => {
     if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
-    let currentItems: WorkOrderItemDB[] = [];
+    const newItems = costItems.filter((item) => !item.dbId);
 
-    try {
-      currentItems = normalizeCostItemsResponse(
-        await apiFetch<WorkOrderItemDB[]>(`/work-order-items/work-order/${orderId}`)
-      );
-    } catch {
-      currentItems = [];
-    }
-
-    await Promise.all(
-      currentItems.map((item) =>
-        apiFetch(`/work-order-items/${item.id}`, { method: "DELETE" })
-      )
-    );
-
-    costItems.forEach((item) => {
+    newItems.forEach((item) => {
       if (!item.inventory_product_id) return;
 
       const product = inventoryProducts.find(
@@ -546,9 +532,12 @@ export default function EditWorkOrderPage() {
       }
     });
 
-    const validItems = costItems
+    const validItems = newItems
       .map(buildItemPayload)
-      .filter((item) => item.description && (item.quantity > 0 || item.unit_price > 0));
+      .filter(
+        (item) =>
+          item.description && (item.quantity > 0 || item.unit_price > 0)
+      );
 
     await Promise.all(
       validItems.map((item) =>
@@ -558,8 +547,16 @@ export default function EditWorkOrderPage() {
         })
       )
     );
-  };
 
+    if (validItems.length > 0) {
+      const refreshedItems = normalizeCostItemsResponse(
+        await apiFetch<WorkOrderItemDB[]>(
+          `/work-order-items/work-order/${orderId}`
+        )
+      );
+      setCostItems(refreshedItems.map(mapDbItemToCostItem));
+    }
+  };
 
   const handleUploadPhoto = async (file: File | null) => {
     if (!file) return;
@@ -1014,24 +1011,22 @@ Gracias por confiar en Taller PRO`;
 
               {inventoryEnabled ? (
                 <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                  Busca productos por nombre, código, categoría o marca. El stock
-                  se valida, pero todavía no se descuenta.
+                  Busca productos por nombre, código, categoría o marca. Los ítems guardados quedan bloqueados; para cambiarlos, elimínalos y agrega uno nuevo.
                 </div>
               ) : null}
 
               <div className="overflow-x-auto rounded-xl border border-slate-800">
-                <table className="min-w-[1120px] w-full text-sm">
+                <table className="min-w-[980px] w-full table-fixed text-sm">
                   <thead className="bg-slate-900 text-slate-300">
                     <tr>
-                      <th className="px-3 py-3 text-left font-medium">Tipo</th>
-                      <th className="px-3 py-3 text-left font-medium">Descripción</th>
-                      <th className="px-3 py-3 text-right font-medium">Cant.</th>
-                      <th className="px-3 py-3 text-right font-medium">V. unitario</th>
-                      <th className="px-3 py-3 text-right font-medium">Subtotal</th>
-                      <th className="px-3 py-3 text-right font-medium">Próx. KM</th>
-                      <th className="px-3 py-3 text-left font-medium">Próx. fecha</th>
-                      <th className="px-3 py-3 text-center font-medium">Record.</th>
-                      <th className="px-3 py-3 text-center font-medium">Acción</th>
+                      <th className="w-36 px-2 py-3 text-left font-medium">Tipo</th>
+                      <th className="w-72 px-2 py-3 text-left font-medium">Descripción</th>
+                      <th className="w-20 px-2 py-3 text-right font-medium">Cant.</th>
+                      <th className="w-24 px-2 py-3 text-right font-medium">V. unit.</th>
+                      <th className="w-24 px-2 py-3 text-right font-medium">Subtotal</th>
+                      <th className="w-24 px-2 py-3 text-right font-medium">Próx. KM</th>
+                      <th className="w-32 px-2 py-3 text-left font-medium">Próx. fecha</th>
+                      <th className="w-20 px-2 py-3 text-center font-medium">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
@@ -1043,15 +1038,26 @@ Gracias por confiar en Taller PRO`;
                           <td className="px-3 py-2">
                             <select
                               value={item.type}
-                              onChange={(e) => handleCostItemChange(item.id, "type", e.target.value as CostItem["type"])}
-                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
+                              disabled={Boolean(item.dbId)}
+                              onChange={(e) =>
+                                handleCostItemChange(
+                                  item.id,
+                                  "type",
+                                  e.target.value as CostItem["type"]
+                                )
+                              }
+                              className="w-32 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 outline-none disabled:cursor-not-allowed disabled:opacity-80"
                             >
                               <option value="labor">Mano de obra</option>
                               <option value="part">Repuesto</option>
                             </select>
                           </td>
-                          <td className="px-3 py-2">
-                            {item.type === "part" && inventoryEnabled ? (
+                          <td className="px-2 py-2">
+                            {item.dbId ? (
+                              <div className="min-h-10 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm text-slate-200">
+                                {item.description}
+                              </div>
+                            ) : item.type === "part" && inventoryEnabled ? (
                               <InventoryProductSearch
                                 itemId={item.id}
                                 searchValue={item.product_search}
@@ -1074,21 +1080,6 @@ Gracias por confiar en Taller PRO`;
                                 }
                                 onSelectProduct={(product) =>
                                   selectInventoryProduct(item.id, product)
-                                }
-                                onUseFreeItem={(description) =>
-                                  setCostItems((currentItems) =>
-                                    currentItems.map((currentItem) =>
-                                      currentItem.id === item.id
-                                        ? {
-                                            ...currentItem,
-                                            inventory_product_id: "",
-                                            product_search: description,
-                                            description,
-                                            unit_price: "0",
-                                          }
-                                        : currentItem
-                                    )
-                                  )
                                 }
                                 onClearProduct={() =>
                                   setCostItems((currentItems) =>
@@ -1120,20 +1111,23 @@ Gracias por confiar en Taller PRO`;
                                 placeholder={
                                   item.type === "labor"
                                     ? "Ej: Cambio de aceite"
-                                    : "Ej: Filtro, bujía, aceite..."
+                                    : "Ej: Filtro, bujía..."
                                 }
-                                className="w-full min-w-[260px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
                               />
                             )}
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-2 py-2">
                             <input
                               type="number"
                               min="0"
                               step="0.01"
                               value={item.quantity}
-                              onChange={(e) => handleCostItemChange(item.id, "quantity", e.target.value)}
-                              className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-right outline-none"
+                              readOnly={Boolean(item.dbId)}
+                              onChange={(e) =>
+                                handleCostItemChange(item.id, "quantity", e.target.value)
+                              }
+                              className="w-16 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-right outline-none read-only:cursor-not-allowed read-only:bg-slate-900/60"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -1142,8 +1136,11 @@ Gracias por confiar en Taller PRO`;
                               min="0"
                               step="0.01"
                               value={item.unit_price}
-                              onChange={(e) => handleCostItemChange(item.id, "unit_price", e.target.value)}
-                              className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-right outline-none"
+                              readOnly={Boolean(item.dbId)}
+                              onChange={(e) =>
+                                handleCostItemChange(item.id, "unit_price", e.target.value)
+                              }
+                              className="w-20 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-right outline-none read-only:cursor-not-allowed read-only:bg-slate-900/60"
                             />
                           </td>
                           <td className="px-3 py-2 text-right font-semibold text-slate-100">
@@ -1154,33 +1151,23 @@ Gracias por confiar en Taller PRO`;
                               type="number"
                               min="0"
                               value={item.next_service_km}
-                              onChange={(e) => handleCostItemChange(item.id, "next_service_km", e.target.value)}
+                              readOnly={Boolean(item.dbId)}
+                              onChange={(e) =>
+                                handleCostItemChange(item.id, "next_service_km", e.target.value)
+                              }
                               placeholder="60000"
-                              className="w-28 rounded-lg border border-blue-500/30 bg-slate-950 px-3 py-2 text-right outline-none"
+                              className="w-20 rounded-lg border border-blue-500/30 bg-slate-950 px-2 py-2 text-right outline-none read-only:cursor-not-allowed read-only:bg-slate-900/60"
                             />
                           </td>
                           <td className="px-3 py-2">
                             <input
                               type="date"
                               value={item.next_service_date}
-                              onChange={(e) => handleCostItemChange(item.id, "next_service_date", e.target.value)}
-                              className="w-36 rounded-lg border border-blue-500/30 bg-slate-950 px-3 py-2 outline-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={item.reminder_enabled}
+                              disabled={Boolean(item.dbId)}
                               onChange={(e) =>
-                                setCostItems((prev) =>
-                                  prev.map((row) =>
-                                    row.id === item.id
-                                      ? { ...row, reminder_enabled: e.target.checked }
-                                      : row
-                                  )
-                                )
+                                handleCostItemChange(item.id, "next_service_date", e.target.value)
                               }
-                              className="h-4 w-4"
+                              className="w-28 rounded-lg border border-blue-500/30 bg-slate-950 px-2 py-2 outline-none disabled:cursor-not-allowed disabled:bg-slate-900/60"
                             />
                           </td>
                           <td className="px-3 py-2 text-center">

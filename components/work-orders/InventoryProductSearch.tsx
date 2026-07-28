@@ -9,7 +9,6 @@ type Props = {
   products: InventoryProduct[];
   onSearchChange: (value: string) => void;
   onSelectProduct: (product: InventoryProduct) => void;
-  onUseFreeItem: (description: string) => void;
   onClearProduct: () => void;
 };
 
@@ -19,7 +18,6 @@ export default function InventoryProductSearch({
   products,
   onSearchChange,
   onSelectProduct,
-  onUseFreeItem,
   onClearProduct,
 }: Props) {
   const term = searchValue.trim().toLowerCase();
@@ -58,15 +56,7 @@ export default function InventoryProductSearch({
 
         {term && !selectedProductId ? (
           <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
-            <button
-              type="button"
-              onClick={() => onUseFreeItem(searchValue.trim())}
-              className="block w-full border-b border-slate-700 px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
-            >
-              Usar como repuesto libre: “{searchValue.trim()}”
-            </button>
-
-            {matches.map((product) => (
+{matches.map((product) => (
               <button
                 key={product.id}
                 type="button"

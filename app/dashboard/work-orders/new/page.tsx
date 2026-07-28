@@ -609,17 +609,6 @@ export default function NewWorkOrderPage() {
                                     String(product.id)
                                   )
                                 }
-                                onUseFreeItem={(description) =>
-                                  setItems((currentItems) =>
-                                    currentItems.map((currentItem) =>
-                                      currentItem.id === item.id
-                                        ? {
-                                            ...currentItem,
-                                            inventory_product_id: "",
-                                            product_search: description,
-                                            description,
-                                            unit_price: "0",
-                                          }
                                         : currentItem
                                     )
                                   )

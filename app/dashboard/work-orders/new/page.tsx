@@ -30,6 +30,7 @@ type OrderItem = {
   id: string;
   item_type: "repuesto" | "mano_obra";
   inventory_product_id: string;
+  product_search: string;
   description: string;
   quantity: string;
   unit_price: string;
@@ -70,6 +71,7 @@ const createEmptyItem = (type: OrderItem["item_type"]): OrderItem => ({
   id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   item_type: type,
   inventory_product_id: "",
+  product_search: "",
   description: "",
   quantity: "1",
   unit_price: "0",
@@ -164,6 +166,7 @@ export default function NewWorkOrderPage() {
             ...item,
             item_type: value as OrderItem["item_type"],
             inventory_product_id: "",
+            product_search: "",
             description: "",
             unit_price: "0",
           };
@@ -185,6 +188,9 @@ export default function NewWorkOrderPage() {
           ? {
               ...item,
               inventory_product_id: productId,
+              product_search: product
+                ? `${product.name}${product.code ? ` · ${product.code}` : ""}`
+                : "",
               description: product?.name || "",
               unit_price: product ? String(product.sale_price) : "0",
               quantity: "1",
@@ -577,61 +583,168 @@ export default function NewWorkOrderPage() {
                             {item.item_type === "repuesto" &&
                             inventoryEnabled ? (
                               <div className="min-w-[300px]">
-                                <select
-                                  value={item.inventory_product_id}
-                                  onChange={(event) =>
-                                    handleInventoryProductChange(
-                                      item.id,
-                                      event.target.value
-                                    )
-                                  }
-                                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none focus:border-emerald-500"
-                                >
-                                  <option value="">
-                                    Repuesto libre (sin inventario)
-                                  </option>
-                                  {inventoryProducts.map((product) => (
-                                    <option
-                                      key={product.id}
-                                      value={product.id}
-                                    >
-                                      {product.name}
-                                      {product.code
-                                        ? ` · ${product.code}`
-                                        : ""}
-                                      {` · Stock ${Number(
-                                        product.stock
-                                      ).toLocaleString("es-US")}`}
-                                    </option>
-                                  ))}
-                                </select>
-
-                                {item.inventory_product_id ? (
-                                  <p className="mt-1 text-xs text-emerald-300">
-                                    Stock disponible:{" "}
-                                    {Number(
-                                      inventoryProducts.find(
-                                        (product) =>
-                                          String(product.id) ===
-                                          item.inventory_product_id
-                                      )?.stock || 0
-                                    ).toLocaleString("es-US")}
-                                  </p>
-                                ) : (
+                                <div className="relative">
                                   <input
                                     type="text"
-                                    value={item.description}
-                                    onChange={(event) =>
-                                      handleItemChange(
-                                        item.id,
-                                        "description",
-                                        event.target.value
-                                      )
-                                    }
-                                    placeholder="Escribe un repuesto no registrado"
-                                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
+                                    value={item.product_search}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+
+                                      setItems((currentItems) =>
+                                        currentItems.map((currentItem) =>
+                                          currentItem.id === item.id
+                                            ? {
+                                                ...currentItem,
+                                                product_search: value,
+                                                inventory_product_id: "",
+                                                description: value,
+                                                unit_price: "0",
+                                              }
+                                            : currentItem
+                                        )
+                                      );
+                                    }}
+                                    placeholder="Buscar producto: ej. ace"
+                                    autoComplete="off"
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none focus:border-emerald-500"
                                   />
-                                )}
+
+                                  {item.product_search.trim() &&
+                                  !item.inventory_product_id ? (
+                                    <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setItems((currentItems) =>
+                                            currentItems.map((currentItem) =>
+                                              currentItem.id === item.id
+                                                ? {
+                                                    ...currentItem,
+                                                    inventory_product_id: "",
+                                                    description:
+                                                      item.product_search.trim(),
+                                                    unit_price: "0",
+                                                  }
+                                                : currentItem
+                                            )
+                                          )
+                                        }
+                                        className="block w-full border-b border-slate-700 px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+                                      >
+                                        Usar como repuesto libre: “
+                                        {item.product_search.trim()}”
+                                      </button>
+
+                                      {inventoryProducts
+                                        .filter((product) => {
+                                          const term =
+                                            item.product_search
+                                              .trim()
+                                              .toLowerCase();
+
+                                          const searchableText = [
+                                            product.name,
+                                            product.code || "",
+                                            product.category || "",
+                                            product.brand || "",
+                                          ]
+                                            .join(" ")
+                                            .toLowerCase();
+
+                                          return searchableText.includes(term);
+                                        })
+                                        .slice(0, 12)
+                                        .map((product) => (
+                                          <button
+                                            key={product.id}
+                                            type="button"
+                                            onClick={() =>
+                                              handleInventoryProductChange(
+                                                item.id,
+                                                String(product.id)
+                                              )
+                                            }
+                                            className="block w-full border-b border-slate-800 px-3 py-2 text-left hover:bg-emerald-500/10"
+                                          >
+                                            <span className="block font-medium text-white">
+                                              {product.name}
+                                            </span>
+                                            <span className="block text-xs text-slate-400">
+                                              {product.code
+                                                ? `${product.code} · `
+                                                : ""}
+                                              Stock{" "}
+                                              {Number(
+                                                product.stock
+                                              ).toLocaleString("es-US")}{" "}
+                                              · Venta $
+                                              {Number(
+                                                product.sale_price
+                                              ).toFixed(2)}
+                                            </span>
+                                          </button>
+                                        ))}
+
+                                      {inventoryProducts.filter((product) => {
+                                        const term =
+                                          item.product_search
+                                            .trim()
+                                            .toLowerCase();
+
+                                        return [
+                                          product.name,
+                                          product.code || "",
+                                          product.category || "",
+                                          product.brand || "",
+                                        ]
+                                          .join(" ")
+                                          .toLowerCase()
+                                          .includes(term);
+                                      }).length === 0 ? (
+                                        <div className="px-3 py-3 text-sm text-slate-400">
+                                          No hay productos que coincidan.
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                {item.inventory_product_id ? (
+                                  <div className="mt-1 flex items-center justify-between gap-3">
+                                    <p className="text-xs text-emerald-300">
+                                      Stock disponible:{" "}
+                                      {Number(
+                                        inventoryProducts.find(
+                                          (product) =>
+                                            String(product.id) ===
+                                            item.inventory_product_id
+                                        )?.stock || 0
+                                      ).toLocaleString("es-US")}
+                                    </p>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setItems((currentItems) =>
+                                          currentItems.map((currentItem) =>
+                                            currentItem.id === item.id
+                                              ? {
+                                                  ...currentItem,
+                                                  inventory_product_id: "",
+                                                  product_search: "",
+                                                  description: "",
+                                                  unit_price: "0",
+                                                }
+                                              : currentItem
+                                          )
+                                        )
+                                      }
+                                      className="text-xs text-slate-400 hover:text-white"
+                                    >
+                                      Cambiar
+                                    </button>
+                                  </div>
+                                ) : null}
                               </div>
                             ) : (
                               <input

@@ -67,11 +67,6 @@ export default function InventoryPage() {
   const lowStockCount = useMemo(
     () => products.filter((p) => p.is_active && p.low_stock).length, [products]
   );
-  const totalStock = useMemo(
-    () => products.reduce((sum, p) => sum + (p.is_active ? Number(p.stock) : 0), 0),
-    [products]
-  );
-
   function updateField(field: keyof ProductForm, value: string | boolean) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -162,9 +157,8 @@ export default function InventoryPage() {
           </button>
         </div>
 
-        <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <div className="mb-6 grid gap-4 sm:grid-cols-2">
           <Stat label="Productos mostrados" value={products.length} />
-          <Stat label="Unidades en stock" value={totalStock.toLocaleString("es-US")} />
           <Stat label="Stock bajo" value={lowStockCount} warning />
         </div>
 

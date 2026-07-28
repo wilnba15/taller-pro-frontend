@@ -26,8 +26,6 @@ type WorkOrder = {
   labor_cost: number | string;
   parts_cost: number | string;
   current_km?: number | string | null;
-  inventory_processed?: boolean;
-  inventory_processed_at?: string | null;
 };
 
 type Client = {
@@ -514,6 +512,24 @@ export default function EditWorkOrderPage() {
   const saveCostItems = async () => {
     if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
+    const savedItems = costItems.filter(
+      (item): item is CostItem & { dbId: number } => Boolean(item.dbId)
+    );
+
+    await Promise.all(
+      savedItems.map((item) =>
+        apiFetch(`/work-order-items/${item.dbId}/next-service`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            next_service_km: item.next_service_km
+              ? Number(item.next_service_km)
+              : null,
+            next_service_date: item.next_service_date || null,
+          }),
+        })
+      )
+    );
+
     const newItems = costItems.filter((item) => !item.dbId);
 
     newItems.forEach((item) => {
@@ -683,18 +699,14 @@ export default function EditWorkOrderPage() {
         parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
-      await saveCostItems();
-
       await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
 
-      setMessage(
-        form.status === "finalizado" || form.status === "entregado"
-          ? "Orden finalizada e inventario descontado correctamente."
-          : "Orden e ítems actualizados correctamente"
-      );
+      await saveCostItems();
+
+      setMessage("Orden, próximos servicios e ítems actualizados correctamente");
       setTimeout(() => {
         setMessage("");
       }, 2000);
@@ -728,12 +740,12 @@ export default function EditWorkOrderPage() {
         parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
-      await saveCostItems();
-
       await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
+
+      await saveCostItems();
 
       setMessage("Orden guardada. Generando factura...");
 
@@ -786,12 +798,12 @@ export default function EditWorkOrderPage() {
         parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
-      await saveCostItems();
-
       await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
+
+      await saveCostItems();
 
       const rawPhone = selectedClient.phone?.replace(/\D/g, "") || "";
       const finalPhone = rawPhone.startsWith("593")
@@ -1157,23 +1169,29 @@ Gracias por confiar en Taller PRO`;
                               type="number"
                               min="0"
                               value={item.next_service_km}
-                              readOnly={Boolean(item.dbId)}
                               onChange={(e) =>
-                                handleCostItemChange(item.id, "next_service_km", e.target.value)
+                                handleCostItemChange(
+                                  item.id,
+                                  "next_service_km",
+                                  e.target.value
+                                )
                               }
                               placeholder="60000"
-                              className="w-20 rounded-lg border border-blue-500/30 bg-slate-950 px-2 py-2 text-right outline-none read-only:cursor-not-allowed read-only:bg-slate-900/60"
+                              className="w-20 rounded-lg border border-blue-500/30 bg-slate-950 px-2 py-2 text-right outline-none focus:border-blue-400"
                             />
                           </td>
                           <td className="px-3 py-2">
                             <input
                               type="date"
                               value={item.next_service_date}
-                              disabled={Boolean(item.dbId)}
                               onChange={(e) =>
-                                handleCostItemChange(item.id, "next_service_date", e.target.value)
+                                handleCostItemChange(
+                                  item.id,
+                                  "next_service_date",
+                                  e.target.value
+                                )
                               }
-                              className="w-28 rounded-lg border border-blue-500/30 bg-slate-950 px-2 py-2 outline-none disabled:cursor-not-allowed disabled:bg-slate-900/60"
+                              className="w-28 rounded-lg border border-blue-500/30 bg-slate-950 px-2 py-2 outline-none focus:border-blue-400"
                             />
                           </td>
                           <td className="px-3 py-2 text-center">

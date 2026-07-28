@@ -305,7 +305,10 @@ export default function NewWorkOrderPage() {
         vehicle_id: Number(form.vehicle_id),
         entry_date: form.entry_date,
         estimated_delivery_date: form.estimated_delivery_date || null,
-        status: form.status,
+        status:
+          form.status === "finalizado" || form.status === "entregado"
+            ? "en_proceso"
+            : form.status,
         issue_description: form.issue_description,
         diagnosis: form.diagnosis || null,
         work_performed: form.work_performed || null,
@@ -321,7 +324,21 @@ export default function NewWorkOrderPage() {
 
       await saveWorkOrderItems(data.id);
 
-      setSuccess("Orden de trabajo e ítems guardados correctamente");
+      if (form.status === "finalizado" || form.status === "entregado") {
+        await apiFetch(`/work-orders/${data.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            ...payload,
+            status: form.status,
+          }),
+        });
+      }
+
+      setSuccess(
+        form.status === "finalizado" || form.status === "entregado"
+          ? "Orden guardada e inventario descontado correctamente"
+          : "Orden de trabajo e ítems guardados correctamente"
+      );
       setTimeout(() => {
         router.push(`/dashboard/work-orders/${data.id}/edit`);
         router.refresh();

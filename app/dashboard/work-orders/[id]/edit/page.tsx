@@ -26,6 +26,8 @@ type WorkOrder = {
   labor_cost: number | string;
   parts_cost: number | string;
   current_km?: number | string | null;
+  inventory_processed?: boolean;
+  inventory_processed_at?: string | null;
 };
 
 type Client = {
@@ -681,14 +683,18 @@ export default function EditWorkOrderPage() {
         parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
+      await saveCostItems();
+
       await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
 
-      await saveCostItems();
-
-      setMessage("Orden e ítems actualizados correctamente");
+      setMessage(
+        form.status === "finalizado" || form.status === "entregado"
+          ? "Orden finalizada e inventario descontado correctamente."
+          : "Orden e ítems actualizados correctamente"
+      );
       setTimeout(() => {
         setMessage("");
       }, 2000);
@@ -722,12 +728,12 @@ export default function EditWorkOrderPage() {
         parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
+      await saveCostItems();
+
       await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-
-      await saveCostItems();
 
       setMessage("Orden guardada. Generando factura...");
 
@@ -780,12 +786,12 @@ export default function EditWorkOrderPage() {
         parts_cost: Number(costTotals.parts.toFixed(2)),
       };
 
+      await saveCostItems();
+
       await apiFetch(`/work-orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-
-      await saveCostItems();
 
       const rawPhone = selectedClient.phone?.replace(/\D/g, "") || "";
       const finalPhone = rawPhone.startsWith("593")

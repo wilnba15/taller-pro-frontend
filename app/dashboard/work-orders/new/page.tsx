@@ -609,10 +609,6 @@ export default function NewWorkOrderPage() {
                                     String(product.id)
                                   )
                                 }
-                                        : currentItem
-                                    )
-                                  )
-                                }
                                 onClearProduct={() =>
                                   setItems((currentItems) =>
                                     currentItems.map((currentItem) =>

@@ -706,7 +706,14 @@ export default function EditWorkOrderPage() {
 
       await saveCostItems();
 
-      setMessage("Orden, próximos servicios e ítems actualizados correctamente");
+      const refreshedItems = normalizeCostItemsResponse(
+        await apiFetch<WorkOrderItemDB[]>(
+          `/work-order-items/work-order/${orderId}`
+        )
+      );
+      setCostItems(refreshedItems.map(mapDbItemToCostItem));
+
+      setMessage("Orden y próximos servicios actualizados correctamente");
       setTimeout(() => {
         setMessage("");
       }, 2000);

@@ -6,6 +6,7 @@ import { apiFetch, getApiBase, getMyWorkshop, requireToken, type WorkshopProfile
 
 type VehicleLifeItem = {
   work_order_id: number;
+  order_number?: number | null;
   work_order_date?: string | null;
   current_km?: number | null;
   status?: string | null;
@@ -37,6 +38,20 @@ function money(value?: number | null) {
 function km(value?: number | null) {
   if (!value) return "—";
   return `${Number(value).toLocaleString("es-EC")} km`;
+}
+
+function formatLongDate(value?: string | null) {
+  if (!value) return "Sin fecha";
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("es-EC", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function itemTypeLabel(value?: string | null) {
@@ -112,6 +127,7 @@ export default function VidaDelAutoPage() {
 
     return Array.from(map.entries()).map(([workOrderId, items]) => ({
       workOrderId,
+      orderNumber: items[0]?.order_number || workOrderId,
       items,
       header: items[0],
     }));
@@ -229,41 +245,7 @@ export default function VidaDelAutoPage() {
         ) : null}
 
         <section className="rounded-2xl border bg-white p-5 text-slate-900 shadow-sm">
-          <h2 className="text-xl font-bold">Próximos cuidados</h2>
-
-          {loading ? (
-            <p className="mt-3 text-slate-500">Cargando...</p>
-          ) : !report?.next_services?.length ? (
-            <p className="mt-3 text-slate-500">
-              Todavía no hay próximos servicios programados.
-            </p>
-          ) : (
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {report.next_services.map((item) => (
-                <div
-                  key={`${item.work_order_id}-${item.item_id}`}
-                  className="rounded-xl border border-blue-100 bg-blue-50 p-4"
-                >
-                  <p className="font-bold">{item.description}</p>
-                  <p className="text-sm text-slate-600">
-                    Realizado en: {km(item.current_km)}
-                  </p>
-                  <p className="mt-2 text-blue-900">
-                    Próximo:{" "}
-                    <strong>
-                      {item.next_service_km ? km(item.next_service_km) : ""}
-                      {item.next_service_km && item.next_service_date ? " · " : ""}
-                      {item.next_service_date || ""}
-                    </strong>
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border bg-white p-5 text-slate-900 shadow-sm">
-          <h2 className="text-xl font-bold">Historial tipo concesionario</h2>
+          <h2 className="text-xl font-bold">Historial del vehículo</h2>
 
           {loading ? (
             <p className="mt-3 text-slate-500">Cargando historial...</p>
@@ -273,7 +255,7 @@ export default function VidaDelAutoPage() {
             </p>
           ) : (
             <div className="mt-5 space-y-5">
-              {grouped.map(({ workOrderId, items, header }) => {
+              {grouped.map(({ workOrderId, orderNumber, items, header }) => {
                 const total = items.reduce(
                   (acc, item) => acc + Number(item.subtotal || 0),
                   0
@@ -286,16 +268,15 @@ export default function VidaDelAutoPage() {
                   >
                     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-blue-700">
-                          Orden #{workOrderId}
+                        <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+                          Mantenimiento realizado
                         </p>
-                        <h3 className="text-2xl font-bold">
-                          {km(header.current_km)}
+                        <h3 className="mt-1 text-2xl font-bold capitalize">
+                          {formatLongDate(header.work_order_date)}
                         </h3>
-                        <p className="text-sm text-slate-500">
-                          {header.work_order_date
-                            ? new Date(header.work_order_date).toLocaleDateString("es-EC")
-                            : "Sin fecha"}
+                        <p className="mt-1 text-sm text-slate-500">
+                          OT #{orderNumber}
+                          {header.current_km ? ` · ${km(header.current_km)}` : ""}
                         </p>
                       </div>
 

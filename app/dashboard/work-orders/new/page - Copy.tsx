@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import InventoryProductSearch from "@/components/work-orders/InventoryProductSearch";
+import {
+  apiFetch,
+  getInventoryProducts,
+  getMyWorkshop,
+  type InventoryProduct,
+} from "@/lib/api";
 
 type Client = {
   id: number;
@@ -24,6 +30,8 @@ type Vehicle = {
 type OrderItem = {
   id: string;
   item_type: "repuesto" | "mano_obra";
+  inventory_product_id: string;
+  product_search: string;
   description: string;
   quantity: string;
   unit_price: string;
@@ -63,6 +71,8 @@ const initialForm: FormState = {
 const createEmptyItem = (type: OrderItem["item_type"]): OrderItem => ({
   id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   item_type: type,
+  inventory_product_id: "",
+  product_search: "",
   description: "",
   quantity: "1",
   unit_price: "0",
@@ -73,6 +83,8 @@ export default function NewWorkOrderPage() {
 
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
+  const [inventoryEnabled, setInventoryEnabled] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm);
   const [items, setItems] = useState<OrderItem[]>([
     createEmptyItem("repuesto"),
@@ -88,14 +100,25 @@ export default function NewWorkOrderPage() {
       try {
         setError("");
 
-        const [clientsData, vehiclesData] = await Promise.all([
+        const [clientsData, vehiclesData, workshopData] = await Promise.all([
           apiFetch<Client[]>("/clients/"),
           apiFetch<Vehicle[]>("/vehicles/"),
+          getMyWorkshop(),
         ]);
 
         // El backend ya devuelve solo datos del taller autenticado.
         setClients(clientsData);
         setVehicles(vehiclesData);
+        setInventoryEnabled(workshopData.inventory_enabled);
+
+        if (workshopData.inventory_enabled) {
+          const productsData = await getInventoryProducts();
+          setInventoryProducts(
+            productsData.filter(
+              (product) => product.is_active && Number(product.stock) > 0
+            )
+          );
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error cargando datos");
       } finally {
@@ -136,7 +159,45 @@ export default function NewWorkOrderPage() {
     value: string
   ) => {
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+      prev.map((item) => {
+        if (item.id !== id) return item;
+
+        if (field === "item_type") {
+          return {
+            ...item,
+            item_type: value as OrderItem["item_type"],
+            inventory_product_id: "",
+            product_search: "",
+            description: "",
+            unit_price: "0",
+          };
+        }
+
+        return { ...item, [field]: value };
+      })
+    );
+  };
+
+  const handleInventoryProductChange = (itemId: string, productId: string) => {
+    const product = inventoryProducts.find(
+      (current) => String(current.id) === productId
+    );
+
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              inventory_product_id: productId,
+              product_search: product
+                ? `${product.name}${product.code ? ` · ${product.code}` : ""}`
+                : "",
+              description: product?.name || "",
+              unit_price: product ? String(product.sale_price) : "0",
+              quantity: "1",
+            }
+          : item
+      )
     );
   };
 
@@ -159,8 +220,27 @@ export default function NewWorkOrderPage() {
         const quantity = Number(item.quantity || 0);
         const unitPrice = Number(item.unit_price || 0);
 
+        if (item.inventory_product_id) {
+          const product = inventoryProducts.find(
+            (current) => String(current.id) === item.inventory_product_id
+          );
+
+          if (!product) {
+            throw new Error("Selecciona un producto válido del inventario");
+          }
+
+          if (quantity > Number(product.stock)) {
+            throw new Error(
+              `Stock insuficiente para ${product.name}. Disponible: ${product.stock}`
+            );
+          }
+        }
+
         return {
           item_type: item.item_type,
+          inventory_product_id: item.inventory_product_id
+            ? Number(item.inventory_product_id)
+            : null,
           description: item.description.trim(),
           quantity,
           unit_price: unitPrice,
@@ -201,6 +281,7 @@ export default function NewWorkOrderPage() {
           body: JSON.stringify({
             work_order_id: workOrderId,
             item_type: item.item_type,
+            inventory_product_id: item.inventory_product_id,
             description: item.description,
             quantity: item.quantity,
             unit_price: item.unit_price,
@@ -224,7 +305,10 @@ export default function NewWorkOrderPage() {
         vehicle_id: Number(form.vehicle_id),
         entry_date: form.entry_date,
         estimated_delivery_date: form.estimated_delivery_date || null,
-        status: form.status,
+        status:
+          form.status === "finalizado" || form.status === "entregado"
+            ? "en_proceso"
+            : form.status,
         issue_description: form.issue_description,
         diagnosis: form.diagnosis || null,
         work_performed: form.work_performed || null,
@@ -240,7 +324,21 @@ export default function NewWorkOrderPage() {
 
       await saveWorkOrderItems(data.id);
 
-      setSuccess("Orden de trabajo e ítems guardados correctamente");
+      if (form.status === "finalizado" || form.status === "entregado") {
+        await apiFetch(`/work-orders/${data.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            ...payload,
+            status: form.status,
+          }),
+        });
+      }
+
+      setSuccess(
+        form.status === "finalizado" || form.status === "entregado"
+          ? "Orden guardada e inventario descontado correctamente"
+          : "Orden de trabajo e ítems guardados correctamente"
+      );
       setTimeout(() => {
         router.push(`/dashboard/work-orders/${data.id}/edit`);
         router.refresh();
@@ -435,7 +533,7 @@ export default function NewWorkOrderPage() {
                 <div>
                   <h2 className="text-lg font-semibold">Detalle económico tipo Excel</h2>
                   <p className="text-sm text-slate-400">
-                    Agrega mano de obra y repuestos en filas. Se guardarán en la tabla work_order_items.
+                    Agrega mano de obra y repuestos. Los productos pueden seleccionarse desde Inventario.
                   </p>
                 </div>
 
@@ -457,12 +555,19 @@ export default function NewWorkOrderPage() {
                 </div>
               </div>
 
+              {inventoryEnabled ? (
+                <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  Los productos seleccionados se asociarán a la OT. En este sprint
+                  el stock solo se valida; todavía no se descuenta.
+                </div>
+              ) : null}
+
               <div className="overflow-x-auto rounded-xl border border-slate-800">
-                <table className="min-w-[760px] w-full text-sm">
+                <table className="min-w-[920px] w-full text-sm">
                   <thead className="bg-slate-900 text-slate-300">
                     <tr>
                       <th className="px-3 py-3 text-left font-medium">Tipo</th>
-                      <th className="px-3 py-3 text-left font-medium">Descripción</th>
+                      <th className="px-3 py-3 text-left font-medium">Producto / Descripción</th>
                       <th className="px-3 py-3 text-right font-medium">Cant.</th>
                       <th className="px-3 py-3 text-right font-medium">V. unitario</th>
                       <th className="px-3 py-3 text-right font-medium">Subtotal</th>
@@ -493,15 +598,69 @@ export default function NewWorkOrderPage() {
                           </td>
 
                           <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={item.description}
-                              onChange={(e) =>
-                                handleItemChange(item.id, "description", e.target.value)
-                              }
-                              placeholder="Ej: Cambio de aceite, filtro, bujía..."
-                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
-                            />
+                            {item.item_type === "repuesto" &&
+                            inventoryEnabled ? (
+                              <InventoryProductSearch
+                                itemId={item.id}
+                                searchValue={item.product_search}
+                                selectedProductId={item.inventory_product_id}
+                                products={inventoryProducts}
+                                onSearchChange={(value) =>
+                                  setItems((currentItems) =>
+                                    currentItems.map((currentItem) =>
+                                      currentItem.id === item.id
+                                        ? {
+                                            ...currentItem,
+                                            product_search: value,
+                                            inventory_product_id: "",
+                                            description: value,
+                                            unit_price: "0",
+                                          }
+                                        : currentItem
+                                    )
+                                  )
+                                }
+                                onSelectProduct={(product) =>
+                                  handleInventoryProductChange(
+                                    item.id,
+                                    String(product.id)
+                                  )
+                                }
+                                onClearProduct={() =>
+                                  setItems((currentItems) =>
+                                    currentItems.map((currentItem) =>
+                                      currentItem.id === item.id
+                                        ? {
+                                            ...currentItem,
+                                            inventory_product_id: "",
+                                            product_search: "",
+                                            description: "",
+                                            unit_price: "0",
+                                          }
+                                        : currentItem
+                                    )
+                                  )
+                                }
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                value={item.description}
+                                onChange={(event) =>
+                                  handleItemChange(
+                                    item.id,
+                                    "description",
+                                    event.target.value
+                                  )
+                                }
+                                placeholder={
+                                  item.item_type === "mano_obra"
+                                    ? "Ej: Cambio de aceite"
+                                    : "Ej: Filtro, bujía, aceite..."
+                                }
+                                className="w-full min-w-[260px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
+                              />
+                            )}
                           </td>
 
                           <td className="px-3 py-2">

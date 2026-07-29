@@ -51,6 +51,7 @@ type FormState = {
 
 type WorkOrderResponse = {
   id: number;
+  order_number: number;
   workshop_id: number;
   client_id: number;
   vehicle_id: number;

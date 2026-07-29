@@ -13,6 +13,7 @@ import {
 
 type WorkOrder = {
   id: number;
+  order_number: number;
   workshop_id: number;
   client_id: number;
   vehicle_id: number;
@@ -136,6 +137,7 @@ export default function EditWorkOrderPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
   const [inventoryEnabled, setInventoryEnabled] = useState(false);
+  const [orderNumber, setOrderNumber] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -321,6 +323,7 @@ export default function EditWorkOrderPage() {
 
         setClients(clientsData);
         setVehicles(vehiclesData);
+        setOrderNumber(order.order_number);
         setInventoryEnabled(workshopData.inventory_enabled);
 
         if (workshopData.inventory_enabled) {
@@ -819,7 +822,7 @@ export default function EditWorkOrderPage() {
 
       const whatsappMessage = `Hola ${selectedClient.full_name},
 
-Le compartimos el estado de su Orden de Trabajo #${orderId}.
+Le compartimos el estado de su Orden de Trabajo #${orderNumber ?? orderId}.
 
 - Vehículo: ${selectedVehicle.brand} ${selectedVehicle.model}
 - Placa: ${selectedVehicle.plate}
@@ -857,7 +860,7 @@ Gracias por confiar en Taller PRO`;
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Editar orden #{orderId}</h1>
+            <h1 className="text-3xl font-bold">Editar orden #{orderNumber ?? orderId}</h1>
             <p className="text-slate-400 mt-1">
               Actualiza estado, diagnóstico, trabajo realizado, notas y costos.
             </p>

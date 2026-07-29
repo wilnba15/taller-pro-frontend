@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import InventoryProductSearch from "@/components/work-orders/InventoryProductSearch";
+import {
+  apiFetch,
+  getInventoryProducts,
+  getMyWorkshop,
+  type InventoryProduct,
+} from "@/lib/api";
 
 type WorkOrder = {
   id: number;
@@ -19,6 +25,7 @@ type WorkOrder = {
   notes?: string | null;
   labor_cost: number | string;
   parts_cost: number | string;
+  current_km?: number | string | null;
 };
 
 type Client = {
@@ -58,25 +65,36 @@ type FormState = {
   notes: string;
   labor_cost: string;
   parts_cost: string;
+  current_km: string;
 };
 
 type CostItem = {
   id: string;
   dbId?: number;
   type: "labor" | "part";
+  inventory_product_id: string;
+  product_search: string;
   description: string;
   quantity: string;
   unit_price: string;
+  next_service_km: string;
+  next_service_date: string;
+  reminder_enabled: boolean;
 };
 
 type WorkOrderItemDB = {
   id: number;
   work_order_id: number;
+  inventory_product_id?: number | null;
   item_type: "repuesto" | "mano_obra" | string;
   description: string;
   quantity: number | string;
   unit_price: number | string;
   subtotal: number | string;
+  next_service_km?: number | string | null;
+  next_service_date?: string | null;
+  reminder_enabled?: boolean | null;
+  reminder_sent?: boolean | null;
   created_at?: string;
 };
 
@@ -116,6 +134,8 @@ export default function EditWorkOrderPage() {
 
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
+  const [inventoryEnabled, setInventoryEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -190,11 +210,12 @@ export default function EditWorkOrderPage() {
     notes: "",
     labor_cost: "0",
     parts_cost: "0",
+    current_km: "",
   });
 
   const [costItems, setCostItems] = useState<CostItem[]>([
-    { id: "labor-initial", type: "labor", description: "Mano de obra", quantity: "1", unit_price: "0" },
-    { id: "parts-initial", type: "part", description: "Repuestos", quantity: "1", unit_price: "0" },
+    { id: "labor-initial", type: "labor", inventory_product_id: "", product_search: "", description: "Mano de obra", quantity: "1", unit_price: "0", next_service_km: "", next_service_date: "", reminder_enabled: true },
+    { id: "parts-initial", type: "part", inventory_product_id: "", product_search: "", description: "Repuestos", quantity: "1", unit_price: "0", next_service_km: "", next_service_date: "", reminder_enabled: true },
   ]);
 
   const normalizeCostItemsResponse = (data: any): WorkOrderItemDB[] => {
@@ -207,9 +228,16 @@ export default function EditWorkOrderPage() {
     id: `db-${item.id}`,
     dbId: item.id,
     type: item.item_type === "mano_obra" ? "labor" : "part",
+    inventory_product_id: item.inventory_product_id
+      ? String(item.inventory_product_id)
+      : "",
+    product_search: item.description || "",
     description: item.description || "",
     quantity: String(item.quantity ?? "1"),
     unit_price: String(item.unit_price ?? "0"),
+    next_service_km: item.next_service_km ? String(item.next_service_km) : "",
+    next_service_date: item.next_service_date || "",
+    reminder_enabled: item.reminder_enabled ?? true,
   });
 
   const buildItemPayload = (item: CostItem) => {
@@ -219,10 +247,17 @@ export default function EditWorkOrderPage() {
     return {
       work_order_id: Number(orderId),
       item_type: item.type === "labor" ? "mano_obra" : "repuesto",
+      inventory_product_id:
+        item.type === "part" && item.inventory_product_id
+          ? Number(item.inventory_product_id)
+          : null,
       description: item.description.trim(),
       quantity,
       unit_price: unitPrice,
       subtotal: quantity * unitPrice,
+      next_service_km: item.next_service_km ? Number(item.next_service_km) : null,
+      next_service_date: item.next_service_date || null,
+      reminder_enabled: item.reminder_enabled ?? true,
     };
   };
 
@@ -245,16 +280,26 @@ export default function EditWorkOrderPage() {
       {
         id: "labor-initial",
         type: "labor",
+        inventory_product_id: "",
+        product_search: "",
         description: "Mano de obra registrada",
         quantity: "1",
         unit_price: String(order.labor_cost ?? "0"),
+        next_service_km: "",
+        next_service_date: "",
+        reminder_enabled: true,
       },
       {
         id: "parts-initial",
         type: "part",
+        inventory_product_id: "",
+        product_search: "",
         description: "Repuestos registrados",
         quantity: "1",
         unit_price: String(order.parts_cost ?? "0"),
+        next_service_km: "",
+        next_service_date: "",
+        reminder_enabled: true,
       },
     ]);
   };
@@ -266,14 +311,28 @@ export default function EditWorkOrderPage() {
       try {
         if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
-        const [order, clientsData, vehiclesData] = await Promise.all([
-          apiFetch<WorkOrder>(`/work-orders/${orderId}`),
-          apiFetch<Client[]>("/clients/"),
-          apiFetch<Vehicle[]>("/vehicles/"),
-        ]);
+        const [order, clientsData, vehiclesData, workshopData] =
+          await Promise.all([
+            apiFetch<WorkOrder>(`/work-orders/${orderId}`),
+            apiFetch<Client[]>("/clients/"),
+            apiFetch<Vehicle[]>("/vehicles/"),
+            getMyWorkshop(),
+          ]);
 
         setClients(clientsData);
         setVehicles(vehiclesData);
+        setInventoryEnabled(workshopData.inventory_enabled);
+
+        if (workshopData.inventory_enabled) {
+          const productsData = await getInventoryProducts({
+            include_inactive: false,
+          });
+          setInventoryProducts(
+            productsData.filter(
+              (product) => product.is_active && Number(product.stock) > 0
+            )
+          );
+        }
 
         setForm({
           workshop_id: order.workshop_id,
@@ -288,6 +347,7 @@ export default function EditWorkOrderPage() {
           notes: order.notes || "",
           labor_cost: String(order.labor_cost ?? "0"),
           parts_cost: String(order.parts_cost ?? "0"),
+          current_km: order.current_km ? String(order.current_km) : "",
         });
 
         await Promise.all([loadCostItems(order), loadPhotos()]);
@@ -373,7 +433,44 @@ export default function EditWorkOrderPage() {
     value: string
   ) => {
     setCostItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+      prev.map((item) => {
+        if (item.id !== id) return item;
+
+        if (field === "type") {
+          return {
+            ...item,
+            type: value as CostItem["type"],
+            inventory_product_id: "",
+            product_search: "",
+            description: "",
+            unit_price: "0",
+          };
+        }
+
+        return { ...item, [field]: value };
+      })
+    );
+  };
+
+  const selectInventoryProduct = (
+    itemId: string,
+    product: InventoryProduct
+  ) => {
+    setCostItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              inventory_product_id: String(product.id),
+              product_search: `${product.name}${
+                product.code ? ` · ${product.code}` : ""
+              }`,
+              description: product.name,
+              quantity: "1",
+              unit_price: String(product.sale_price),
+            }
+          : item
+      )
     );
   };
 
@@ -383,9 +480,14 @@ export default function EditWorkOrderPage() {
       {
         id: `${type}-${Date.now()}`,
         type,
+        inventory_product_id: "",
+        product_search: "",
         description: "",
         quantity: "1",
         unit_price: "0",
+        next_service_km: "",
+        next_service_date: "",
+        reminder_enabled: true,
       },
     ]);
   };
@@ -410,25 +512,50 @@ export default function EditWorkOrderPage() {
   const saveCostItems = async () => {
     if (!api) throw new Error("Falta NEXT_PUBLIC_API_BASE");
 
-    let currentItems: WorkOrderItemDB[] = [];
-
-    try {
-      currentItems = normalizeCostItemsResponse(
-        await apiFetch<WorkOrderItemDB[]>(`/work-order-items/work-order/${orderId}`)
-      );
-    } catch {
-      currentItems = [];
-    }
+    const savedItems = costItems.filter(
+      (item): item is CostItem & { dbId: number } => Boolean(item.dbId)
+    );
 
     await Promise.all(
-      currentItems.map((item) =>
-        apiFetch(`/work-order-items/${item.id}`, { method: "DELETE" })
+      savedItems.map((item) =>
+        apiFetch(`/work-order-items/${item.dbId}/next-service`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            next_service_km: item.next_service_km
+              ? Number(item.next_service_km)
+              : null,
+            next_service_date: item.next_service_date || null,
+          }),
+        })
       )
     );
 
-    const validItems = costItems
+    const newItems = costItems.filter((item) => !item.dbId);
+
+    newItems.forEach((item) => {
+      if (!item.inventory_product_id) return;
+
+      const product = inventoryProducts.find(
+        (current) => String(current.id) === item.inventory_product_id
+      );
+
+      if (!product) {
+        throw new Error("Selecciona un producto válido del inventario");
+      }
+
+      if (parseAmount(item.quantity) > Number(product.stock)) {
+        throw new Error(
+          `Stock insuficiente para ${product.name}. Disponible: ${product.stock}`
+        );
+      }
+    });
+
+    const validItems = newItems
       .map(buildItemPayload)
-      .filter((item) => item.description && (item.quantity > 0 || item.unit_price > 0));
+      .filter(
+        (item) =>
+          item.description && (item.quantity > 0 || item.unit_price > 0)
+      );
 
     await Promise.all(
       validItems.map((item) =>
@@ -438,8 +565,16 @@ export default function EditWorkOrderPage() {
         })
       )
     );
-  };
 
+    if (validItems.length > 0) {
+      const refreshedItems = normalizeCostItemsResponse(
+        await apiFetch<WorkOrderItemDB[]>(
+          `/work-order-items/work-order/${orderId}`
+        )
+      );
+      setCostItems(refreshedItems.map(mapDbItemToCostItem));
+    }
+  };
 
   const handleUploadPhoto = async (file: File | null) => {
     if (!file) return;
@@ -552,6 +687,7 @@ export default function EditWorkOrderPage() {
       const payload = {
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
+        current_km: form.current_km ? Number(form.current_km) : null,
         entry_date: form.entry_date,
         estimated_delivery_date: form.estimated_delivery_date || null,
         status: form.status,
@@ -570,7 +706,14 @@ export default function EditWorkOrderPage() {
 
       await saveCostItems();
 
-      setMessage("Orden e ítems actualizados correctamente");
+      const refreshedItems = normalizeCostItemsResponse(
+        await apiFetch<WorkOrderItemDB[]>(
+          `/work-order-items/work-order/${orderId}`
+        )
+      );
+      setCostItems(refreshedItems.map(mapDbItemToCostItem));
+
+      setMessage("Orden y próximos servicios actualizados correctamente");
       setTimeout(() => {
         setMessage("");
       }, 2000);
@@ -592,6 +735,7 @@ export default function EditWorkOrderPage() {
       const payload = {
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
+        current_km: form.current_km ? Number(form.current_km) : null,
         entry_date: form.entry_date,
         estimated_delivery_date: form.estimated_delivery_date || null,
         status: form.status,
@@ -649,6 +793,7 @@ export default function EditWorkOrderPage() {
       const payload = {
         client_id: form.client_id,
         vehicle_id: form.vehicle_id,
+        current_km: form.current_km ? Number(form.current_km) : null,
         entry_date: form.entry_date,
         estimated_delivery_date: form.estimated_delivery_date || null,
         status: form.status,
@@ -786,6 +931,19 @@ Gracias por confiar en Taller PRO`;
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium mb-2">KM actual de la visita</label>
+                <input
+                  type="number"
+                  name="current_km"
+                  min="0"
+                  value={form.current_km}
+                  onChange={handleChange}
+                  placeholder="Ej: 50000"
+                  className="w-full rounded-xl border border-blue-500/40 bg-slate-950 px-4 py-3 outline-none"
+                />
+              </div>
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium mb-2">Estado</label>
                 <select
@@ -854,7 +1012,7 @@ Gracias por confiar en Taller PRO`;
                 <div>
                   <h2 className="text-lg font-semibold">Detalle económico tipo Excel</h2>
                   <p className="text-sm text-slate-400">
-                    Agrega mano de obra y repuestos en filas. El total se calcula automáticamente.
+                    Agrega mano de obra y repuestos. Si el taller tiene inventario, puede seleccionar productos registrados.
                   </p>
                 </div>
 
@@ -876,16 +1034,24 @@ Gracias por confiar en Taller PRO`;
                 </div>
               </div>
 
+              {inventoryEnabled ? (
+                <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  Busca productos por nombre, código, categoría o marca. Los ítems guardados quedan bloqueados; para cambiarlos, elimínalos y agrega uno nuevo.
+                </div>
+              ) : null}
+
               <div className="overflow-x-auto rounded-xl border border-slate-800">
-                <table className="min-w-[760px] w-full text-sm">
+                <table className="min-w-[980px] w-full table-fixed text-sm">
                   <thead className="bg-slate-900 text-slate-300">
                     <tr>
-                      <th className="px-3 py-3 text-left font-medium">Tipo</th>
-                      <th className="px-3 py-3 text-left font-medium">Descripción</th>
-                      <th className="px-3 py-3 text-right font-medium">Cant.</th>
-                      <th className="px-3 py-3 text-right font-medium">V. unitario</th>
-                      <th className="px-3 py-3 text-right font-medium">Subtotal</th>
-                      <th className="px-3 py-3 text-center font-medium">Acción</th>
+                      <th className="w-36 px-2 py-3 text-left font-medium">Tipo</th>
+                      <th className="w-72 px-2 py-3 text-left font-medium">Descripción</th>
+                      <th className="w-20 px-2 py-3 text-right font-medium">Cant.</th>
+                      <th className="w-24 px-2 py-3 text-right font-medium">V. unit.</th>
+                      <th className="w-24 px-2 py-3 text-right font-medium">Subtotal</th>
+                      <th className="w-24 px-2 py-3 text-right font-medium">Próx. KM</th>
+                      <th className="w-32 px-2 py-3 text-left font-medium">Próx. fecha</th>
+                      <th className="w-20 px-2 py-3 text-center font-medium">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
@@ -897,30 +1063,96 @@ Gracias por confiar en Taller PRO`;
                           <td className="px-3 py-2">
                             <select
                               value={item.type}
-                              onChange={(e) => handleCostItemChange(item.id, "type", e.target.value as CostItem["type"])}
-                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
+                              disabled={Boolean(item.dbId)}
+                              onChange={(e) =>
+                                handleCostItemChange(
+                                  item.id,
+                                  "type",
+                                  e.target.value as CostItem["type"]
+                                )
+                              }
+                              className="w-32 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 outline-none disabled:cursor-not-allowed disabled:opacity-80"
                             >
                               <option value="labor">Mano de obra</option>
                               <option value="part">Repuesto</option>
                             </select>
                           </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={item.description}
-                              onChange={(e) => handleCostItemChange(item.id, "description", e.target.value)}
-                              placeholder="Ej: Cambio de aceite, filtro, bujía..."
-                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
-                            />
+                          <td className="px-2 py-2">
+                            {item.dbId ? (
+                              <div className="min-h-10 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm text-slate-200">
+                                {item.description}
+                              </div>
+                            ) : item.type === "part" && inventoryEnabled ? (
+                              <InventoryProductSearch
+                                itemId={item.id}
+                                searchValue={item.product_search}
+                                selectedProductId={item.inventory_product_id}
+                                products={inventoryProducts}
+                                onSearchChange={(value) =>
+                                  setCostItems((currentItems) =>
+                                    currentItems.map((currentItem) =>
+                                      currentItem.id === item.id
+                                        ? {
+                                            ...currentItem,
+                                            product_search: value,
+                                            inventory_product_id: "",
+                                            description: value,
+                                            unit_price: "0",
+                                          }
+                                        : currentItem
+                                    )
+                                  )
+                                }
+                                onSelectProduct={(product) =>
+                                  selectInventoryProduct(item.id, product)
+                                }
+                                onClearProduct={() =>
+                                  setCostItems((currentItems) =>
+                                    currentItems.map((currentItem) =>
+                                      currentItem.id === item.id
+                                        ? {
+                                            ...currentItem,
+                                            inventory_product_id: "",
+                                            product_search: "",
+                                            description: "",
+                                            unit_price: "0",
+                                          }
+                                        : currentItem
+                                    )
+                                  )
+                                }
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                value={item.description}
+                                onChange={(event) =>
+                                  handleCostItemChange(
+                                    item.id,
+                                    "description",
+                                    event.target.value
+                                  )
+                                }
+                                placeholder={
+                                  item.type === "labor"
+                                    ? "Ej: Cambio de aceite"
+                                    : "Ej: Filtro, bujía..."
+                                }
+                                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none"
+                              />
+                            )}
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-2 py-2">
                             <input
                               type="number"
                               min="0"
                               step="0.01"
                               value={item.quantity}
-                              onChange={(e) => handleCostItemChange(item.id, "quantity", e.target.value)}
-                              className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-right outline-none"
+                              readOnly={Boolean(item.dbId)}
+                              onChange={(e) =>
+                                handleCostItemChange(item.id, "quantity", e.target.value)
+                              }
+                              className="w-16 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-right outline-none read-only:cursor-not-allowed read-only:bg-slate-900/60"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -929,12 +1161,45 @@ Gracias por confiar en Taller PRO`;
                               min="0"
                               step="0.01"
                               value={item.unit_price}
-                              onChange={(e) => handleCostItemChange(item.id, "unit_price", e.target.value)}
-                              className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-right outline-none"
+                              readOnly={Boolean(item.dbId)}
+                              onChange={(e) =>
+                                handleCostItemChange(item.id, "unit_price", e.target.value)
+                              }
+                              className="w-20 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-right outline-none read-only:cursor-not-allowed read-only:bg-slate-900/60"
                             />
                           </td>
                           <td className="px-3 py-2 text-right font-semibold text-slate-100">
                             ${subtotal.toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.next_service_km}
+                              onChange={(e) =>
+                                handleCostItemChange(
+                                  item.id,
+                                  "next_service_km",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="60000"
+                              className="w-20 rounded-lg border border-blue-500/30 bg-slate-950 px-2 py-2 text-right outline-none focus:border-blue-400"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="date"
+                              value={item.next_service_date}
+                              onChange={(e) =>
+                                handleCostItemChange(
+                                  item.id,
+                                  "next_service_date",
+                                  e.target.value
+                                )
+                              }
+                              className="w-28 rounded-lg border border-blue-500/30 bg-slate-950 px-2 py-2 outline-none focus:border-blue-400"
+                            />
                           </td>
                           <td className="px-3 py-2 text-center">
                             <button
@@ -975,6 +1240,23 @@ Gracias por confiar en Taller PRO`;
               >
                 Volver al listado
               </Link>
+              {selectedVehicle ? (
+                <Link
+                  href={`/dashboard/vehicles/${selectedVehicle.id}/vida-del-auto?plate=${encodeURIComponent(selectedVehicle.plate || "")}&brand=${encodeURIComponent(selectedVehicle.brand || "")}&model=${encodeURIComponent(selectedVehicle.model || "")}&client=${encodeURIComponent(selectedClient?.full_name || "")}`}
+                  className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 font-medium text-blue-200 hover:bg-blue-500/20 transition"
+                >
+                  Vida del Auto
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-xl border border-slate-700 px-4 py-3 font-medium text-slate-500"
+                >
+                  Vida del Auto
+                </button>
+              )}
+
               <button
                 type="submit"
                 disabled={saving}

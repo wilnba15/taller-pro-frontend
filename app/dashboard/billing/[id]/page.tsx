@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiBase, getToken } from "@/lib/api";
 
 type InvoiceItem = {
   id: number;
@@ -135,19 +135,58 @@ export default function BillingInvoiceDetailPage() {
 
   const handleViewXml = async () => {
     setSriError("");
+
     try {
-      const base = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/$/, "");
-      const token = localStorage.getItem("access_token");
-      const response = await fetch(`${base}/sri-documents/invoice/${invoiceId}/xml`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!response.ok) throw new Error("No se pudo abrir el XML");
+      const base = getApiBase().replace(/\/$/, "");
+      const token = getToken();
+
+      if (!token) {
+        throw new Error("Sesión no iniciada");
+      }
+
+      const response = await fetch(
+        `${base}/sri-documents/invoice/${invoiceId}/xml`,
+        {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        let message = "No se pudo abrir el XML";
+
+        try {
+          const data = await response.json();
+          message = data?.detail || message;
+        } catch {
+          // La respuesta puede no ser JSON.
+        }
+
+        throw new Error(message);
+      }
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+      window.open(
+        url,
+        "_blank",
+        "noopener,noreferrer"
+      );
+
+      window.setTimeout(
+        () => URL.revokeObjectURL(url),
+        60000
+      );
     } catch (err) {
-      setSriError(err instanceof Error ? err.message : "No se pudo abrir el XML");
+      setSriError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo abrir el XML"
+      );
     }
   };
 

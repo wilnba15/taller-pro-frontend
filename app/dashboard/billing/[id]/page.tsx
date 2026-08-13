@@ -20,6 +20,20 @@ type InvoiceItem = {
   created_at: string;
 };
 
+type ElectronicDocument = {
+  id: number;
+  workshop_id: number;
+  invoice_id: number;
+  document_type: string;
+  xml_version: string;
+  environment: string;
+  numeric_code: string;
+  access_key: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type Invoice = {
   id: number;
   workshop_id: number;
@@ -69,6 +83,9 @@ export default function BillingInvoiceDetailPage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sriDocument, setSriDocument] = useState<ElectronicDocument | null>(null);
+  const [generatingSri, setGeneratingSri] = useState(false);
+  const [sriError, setSriError] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -77,6 +94,15 @@ export default function BillingInvoiceDetailPage() {
 
         const data = await apiFetch<Invoice>(`/invoices/${invoiceId}`);
         setInvoice(data);
+
+        try {
+          const doc = await apiFetch<ElectronicDocument>(
+            `/sri-documents/invoice/${invoiceId}`
+          );
+          setSriDocument(doc);
+        } catch {
+          setSriDocument(null);
+        }
       } catch (err) {
         setError(
           err instanceof Error
@@ -90,6 +116,40 @@ export default function BillingInvoiceDetailPage() {
 
     load();
   }, [invoiceId]);
+
+  const handleGenerateSriXml = async () => {
+    setGeneratingSri(true);
+    setSriError("");
+    try {
+      const doc = await apiFetch<ElectronicDocument>(
+        `/sri-documents/invoice/${invoiceId}/generate`,
+        { method: "POST" }
+      );
+      setSriDocument(doc);
+    } catch (err) {
+      setSriError(err instanceof Error ? err.message : "No se pudo generar el XML SRI");
+    } finally {
+      setGeneratingSri(false);
+    }
+  };
+
+  const handleViewXml = async () => {
+    setSriError("");
+    try {
+      const base = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/$/, "");
+      const token = localStorage.getItem("access_token");
+      const response = await fetch(`${base}/sri-documents/invoice/${invoiceId}/xml`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("No se pudo abrir el XML");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      setSriError(err instanceof Error ? err.message : "No se pudo abrir el XML");
+    }
+  };
 
   if (loading) {
     return (
@@ -307,11 +367,67 @@ export default function BillingInvoiceDetailPage() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
+              <p className="text-sm uppercase tracking-[0.14em] text-emerald-200">
+                🇪🇨 Comprobante electrónico SRI
+              </p>
+              <h2 className="mt-2 text-xl font-semibold">Sprint Facturación 2A</h2>
+
+              {!sriDocument ? (
+                <>
+                  <p className="mt-4 text-sm text-slate-300">
+                    Genera la clave de acceso y el XML SRI de esta factura.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleGenerateSriXml}
+                    disabled={generatingSri}
+                    className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-3 font-semibold hover:bg-emerald-500 disabled:opacity-60"
+                  >
+                    {generatingSri ? "Generando..." : "🔐 Generar XML SRI"}
+                  </button>
+                </>
+              ) : (
+                <div className="mt-5 space-y-4 text-sm">
+                  <div className="rounded-xl bg-slate-950/60 p-4">
+                    <p className="text-xs uppercase text-slate-400">Ambiente</p>
+                    <p className="mt-1 font-semibold uppercase">{sriDocument.environment}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-950/60 p-4">
+                    <p className="text-xs uppercase text-slate-400">Clave de acceso</p>
+                    <p className="mt-2 break-all font-mono leading-6 text-emerald-100">
+                      {sriDocument.access_key}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      {sriDocument.access_key.length} dígitos
+                    </p>
+                  </div>
+                  <div className="flex justify-between rounded-xl bg-slate-950/60 p-4">
+                    <span>XML v{sriDocument.xml_version}</span>
+                    <span className="font-semibold uppercase">{sriDocument.status}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleViewXml}
+                    className="w-full rounded-xl border border-emerald-400/30 px-4 py-3 font-semibold hover:bg-emerald-400/10"
+                  >
+                    📄 Ver XML
+                  </button>
+                </div>
+              )}
+
+              {sriError ? (
+                <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                  {sriError}
+                </div>
+              ) : null}
+            </div>
+
             <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5 text-sm text-amber-100">
-              <p className="font-semibold">Sprint Facturación 1</p>
+              <p className="font-semibold">Documento todavía no autorizado</p>
               <p className="mt-2 text-amber-100/80">
-                Esta factura está en estado borrador. Todavía no ha sido
-                firmada ni enviada al SRI.
+                En Sprint 2A generamos la clave de acceso y el XML. Todavía no
+                firmamos electrónicamente ni enviamos el comprobante al SRI.
               </p>
             </div>
           </aside>

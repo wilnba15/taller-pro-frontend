@@ -34,6 +34,32 @@ type ElectronicDocument = {
   updated_at: string;
 };
 
+type CertificateInfo = {
+  workshop_id: number;
+  configured: boolean;
+  subject: string;
+  issuer: string;
+  serial: string;
+  valid_from: string;
+  valid_to: string;
+};
+
+type ElectronicSignature = {
+  id: number;
+  workshop_id: number;
+  invoice_id: number;
+  electronic_document_id: number;
+  certificate_subject: string;
+  certificate_issuer: string;
+  certificate_serial: string;
+  valid_from: string;
+  valid_to: string;
+  signature_algorithm: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type Invoice = {
   id: number;
   workshop_id: number;
@@ -86,6 +112,11 @@ export default function BillingInvoiceDetailPage() {
   const [sriDocument, setSriDocument] = useState<ElectronicDocument | null>(null);
   const [generatingSri, setGeneratingSri] = useState(false);
   const [sriError, setSriError] = useState("");
+  const [certificateInfo, setCertificateInfo] = useState<CertificateInfo | null>(null);
+  const [certificateError, setCertificateError] = useState("");
+  const [signature, setSignature] = useState<ElectronicSignature | null>(null);
+  const [signing, setSigning] = useState(false);
+  const [signatureError, setSignatureError] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -102,6 +133,30 @@ export default function BillingInvoiceDetailPage() {
           setSriDocument(doc);
         } catch {
           setSriDocument(null);
+        }
+
+        try {
+          const cert = await apiFetch<CertificateInfo>(
+            "/sri-signatures/certificate"
+          );
+          setCertificateInfo(cert);
+          setCertificateError("");
+        } catch (err) {
+          setCertificateInfo(null);
+          setCertificateError(
+            err instanceof Error
+              ? err.message
+              : "No se pudo leer el certificado"
+          );
+        }
+
+        try {
+          const existingSignature = await apiFetch<ElectronicSignature>(
+            `/sri-signatures/invoice/${invoiceId}`
+          );
+          setSignature(existingSignature);
+        } catch {
+          setSignature(null);
         }
       } catch (err) {
         setError(
@@ -186,6 +241,100 @@ export default function BillingInvoiceDetailPage() {
         err instanceof Error
           ? err.message
           : "No se pudo abrir el XML"
+      );
+    }
+  };
+
+  const handleSignXml = async () => {
+    setSigning(true);
+    setSignatureError("");
+
+    try {
+      if (!sriDocument) {
+        throw new Error("Primero debe generar el XML SRI");
+      }
+
+      if (!certificateInfo?.configured) {
+        throw new Error("La firma electrónica todavía no está configurada");
+      }
+
+      const signed = await apiFetch<ElectronicSignature>(
+        `/sri-signatures/invoice/${invoiceId}/sign`,
+        {
+          method: "POST",
+        }
+      );
+
+      setSignature(signed);
+
+      const refreshedDocument = await apiFetch<ElectronicDocument>(
+        `/sri-documents/invoice/${invoiceId}`
+      );
+      setSriDocument(refreshedDocument);
+    } catch (err) {
+      setSignatureError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo firmar el XML"
+      );
+    } finally {
+      setSigning(false);
+    }
+  };
+
+  const handleViewSignedXml = async () => {
+    setSignatureError("");
+
+    try {
+      const base = getApiBase().replace(/\/$/, "");
+      const token = getToken();
+
+      if (!token) {
+        throw new Error("Sesión no iniciada");
+      }
+
+      const response = await fetch(
+        `${base}/sri-signatures/invoice/${invoiceId}/xml`,
+        {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        let message = "No se pudo abrir el XML firmado";
+
+        try {
+          const data = await response.json();
+          message = data?.detail || message;
+        } catch {
+          // La respuesta puede no ser JSON.
+        }
+
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      window.open(
+        url,
+        "_blank",
+        "noopener,noreferrer"
+      );
+
+      window.setTimeout(
+        () => URL.revokeObjectURL(url),
+        60000
+      );
+    } catch (err) {
+      setSignatureError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo abrir el XML firmado"
       );
     }
   };
@@ -462,11 +611,101 @@ export default function BillingInvoiceDetailPage() {
               ) : null}
             </div>
 
+            <div className="rounded-2xl border border-violet-500/30 bg-violet-500/10 p-6">
+              <p className="text-sm uppercase tracking-[0.14em] text-violet-200">
+                🔐 Firma electrónica
+              </p>
+              <h2 className="mt-2 text-xl font-semibold">
+                Sprint Facturación 2B
+              </h2>
+
+              {certificateInfo ? (
+                <div className="mt-5 space-y-4 text-sm">
+                  <div className="rounded-xl border border-violet-400/20 bg-slate-950/60 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Certificado
+                    </p>
+                    <p className="mt-1 font-semibold text-emerald-300">
+                      Configurado ✅
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-violet-400/20 bg-slate-950/60 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Titular
+                    </p>
+                    <p className="mt-2 break-words text-slate-200">
+                      {certificateInfo.subject}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-violet-400/20 bg-slate-950/60 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Vigencia
+                    </p>
+                    <p className="mt-2 text-slate-200">
+                      Hasta {new Date(certificateInfo.valid_to).toLocaleDateString("es-EC")}
+                    </p>
+                  </div>
+
+                  {!signature ? (
+                    <button
+                      type="button"
+                      onClick={handleSignXml}
+                      disabled={signing || !sriDocument}
+                      className="w-full rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {signing ? "Firmando..." : "✍️ Firmar XML"}
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+                        <span className="text-slate-300">Estado de firma</span>
+                        <span className="font-bold uppercase text-emerald-300">
+                          {signature.status} ✅
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+                        <span className="text-slate-400">Algoritmo</span>
+                        <span className="font-semibold">
+                          {signature.signature_algorithm}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleViewSignedXml}
+                        className="w-full rounded-xl border border-violet-400/30 px-4 py-3 font-semibold text-violet-100 transition hover:bg-violet-400/10"
+                      >
+                        📄 Ver XML firmado
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                  <p className="font-semibold">
+                    Certificado no disponible
+                  </p>
+                  <p className="mt-2">
+                    {certificateError || "No se pudo leer la firma electrónica."}
+                  </p>
+                </div>
+              )}
+
+              {signatureError ? (
+                <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                  {signatureError}
+                </div>
+              ) : null}
+            </div>
+
             <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5 text-sm text-amber-100">
               <p className="font-semibold">Documento todavía no autorizado</p>
               <p className="mt-2 text-amber-100/80">
-                En Sprint 2A generamos la clave de acceso y el XML. Todavía no
-                firmamos electrónicamente ni enviamos el comprobante al SRI.
+                Sprint 2B permite firmar electrónicamente el XML. El envío y la
+                autorización ante el SRI se realizarán en el siguiente sprint.
               </p>
             </div>
           </aside>

@@ -62,6 +62,23 @@ export type SriSettingsUpdate = {
   rimpe_type?: string | null;
 };
 
+
+export type SriCertificateInfo = {
+  configured: boolean;
+  id?: number;
+  workshop_id?: number;
+  filename?: string;
+  certificate_subject?: string;
+  certificate_issuer?: string;
+  certificate_serial?: string;
+  valid_from?: string;
+  valid_to?: string;
+  sha256?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string | null;
+};
+
 export type AdminWorkshop = {
   id: number;
   name: string;
@@ -219,6 +236,52 @@ export function updateMySriSettings(data: SriSettingsUpdate) {
   return apiFetch<SriSettings>("/sri-settings/me", {
     method: "PUT",
     body: JSON.stringify(data),
+  });
+}
+
+
+export function getMySriCertificate() {
+  return apiFetch<SriCertificateInfo>("/sri-certificates/me");
+}
+
+export async function uploadMySriCertificate(
+  file: File,
+  password: string
+) {
+  const token = requireToken();
+  const api = getApiBase();
+  const formData = new FormData();
+
+  formData.append("certificate", file);
+  formData.append("password", password);
+
+  const res = await fetch(`${api}/sri-certificates/me`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    clearSession();
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    throw new Error("Sesión vencida o no autorizada");
+  }
+
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+
+  return res.json() as Promise<SriCertificateInfo>;
+}
+
+export function deleteMySriCertificate() {
+  return apiFetch<{ message: string }>("/sri-certificates/me", {
+    method: "DELETE",
   });
 }
 

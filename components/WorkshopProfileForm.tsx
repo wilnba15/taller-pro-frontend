@@ -2,11 +2,15 @@
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import {
+  deleteMySriCertificate,
+  getMySriCertificate,
   getMySriSettings,
   getMyWorkshop,
   updateMySriSettings,
   updateMyWorkshop,
+  uploadMySriCertificate,
   uploadMyWorkshopLogo,
+  type SriCertificateInfo,
   type SriSettings,
   type SriSettingsUpdate,
   type WorkshopProfile,
@@ -98,6 +102,12 @@ export default function WorkshopProfileForm() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [savingSri, setSavingSri] = useState(false);
   const [sriForm, setSriForm] = useState<SriFormState>(EMPTY_SRI_FORM);
+  const [sriCertificate, setSriCertificate] = useState<SriCertificateInfo | null>(null);
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificatePassword, setCertificatePassword] = useState("");
+  const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const [certificateError, setCertificateError] = useState("");
+  const [certificateSuccess, setCertificateSuccess] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [sriError, setSriError] = useState("");
@@ -106,12 +116,14 @@ export default function WorkshopProfileForm() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const [profile, sriSettings] = await Promise.all([
+        const [profile, sriSettings, certificateInfo] = await Promise.all([
           getMyWorkshop(),
           getMySriSettings(),
+          getMySriCertificate(),
         ]);
         setForm(profileToForm(profile));
         setSriForm(sriSettingsToForm(sriSettings));
+        setSriCertificate(certificateInfo);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar el perfil del taller");
       } finally {
@@ -183,6 +195,73 @@ export default function WorkshopProfileForm() {
       );
     } finally {
       setSavingSri(false);
+    }
+  }
+
+  async function handleCertificateUpload() {
+    setCertificateError("");
+    setCertificateSuccess("");
+
+    if (!certificateFile) {
+      setCertificateError("Selecciona un archivo .p12.");
+      return;
+    }
+
+    if (!certificatePassword) {
+      setCertificateError("Ingresa la contraseña del certificado.");
+      return;
+    }
+
+    try {
+      setUploadingCertificate(true);
+
+      const updated = await uploadMySriCertificate(
+        certificateFile,
+        certificatePassword
+      );
+
+      setSriCertificate(updated);
+      setCertificateFile(null);
+      setCertificatePassword("");
+      setCertificateSuccess(
+        "Certificado electrónico configurado correctamente."
+      );
+    } catch (err) {
+      setCertificateError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo cargar el certificado"
+      );
+    } finally {
+      setUploadingCertificate(false);
+    }
+  }
+
+  async function handleCertificateDelete() {
+    const confirmed = window.confirm(
+      "¿Deseas eliminar el certificado electrónico configurado para este taller?"
+    );
+
+    if (!confirmed) return;
+
+    setCertificateError("");
+    setCertificateSuccess("");
+
+    try {
+      setUploadingCertificate(true);
+      await deleteMySriCertificate();
+      setSriCertificate({ configured: false });
+      setCertificateFile(null);
+      setCertificatePassword("");
+      setCertificateSuccess("Certificado eliminado correctamente.");
+    } catch (err) {
+      setCertificateError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo eliminar el certificado"
+      );
+    } finally {
+      setUploadingCertificate(false);
     }
   }
 
@@ -452,6 +531,127 @@ export default function WorkshopProfileForm() {
               {savingSri ? "Guardando SRI..." : "💾 Guardar configuración SRI"}
             </button>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-violet-500/30 bg-violet-500/10 p-6 shadow-lg">
+        <div className="mb-6">
+          <p className="text-sm font-semibold uppercase tracking-wider text-violet-300">
+            🔐 Firma electrónica
+          </p>
+          <h2 className="mt-2 text-xl font-semibold">
+            Certificado electrónico del taller
+          </h2>
+          <p className="mt-1 text-sm text-slate-300">
+            Cada taller utiliza su propio archivo .p12 para firmar sus comprobantes.
+          </p>
+        </div>
+
+        {sriCertificate?.configured ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+              <p className="font-semibold text-emerald-300">
+                Certificado configurado ✅
+              </p>
+              <p className="mt-2 text-sm text-slate-300">
+                Archivo: {sriCertificate.filename || "-"}
+              </p>
+              <p className="mt-1 break-words text-sm text-slate-300">
+                Titular: {sriCertificate.certificate_subject || "-"}
+              </p>
+              <p className="mt-1 text-sm text-slate-300">
+                Vigencia hasta:{" "}
+                {sriCertificate.valid_to
+                  ? new Date(sriCertificate.valid_to).toLocaleDateString("es-EC")
+                  : "-"}
+              </p>
+            </div>
+
+            <p className="text-sm text-slate-400">
+              Puedes reemplazar el certificado cargando un nuevo archivo .p12.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+            Este taller todavía no tiene un certificado electrónico propio configurado.
+          </div>
+        )}
+
+        <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              Archivo .p12
+            </label>
+            <input
+              type="file"
+              accept=".p12,application/x-pkcs12"
+              onChange={(event) => {
+                setCertificateFile(event.target.files?.[0] || null);
+                setCertificateError("");
+                setCertificateSuccess("");
+              }}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white file:mr-4 file:rounded-lg file:border-0 file:bg-violet-600 file:px-4 file:py-2 file:font-semibold file:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              Contraseña del certificado
+            </label>
+            <input
+              type="password"
+              value={certificatePassword}
+              onChange={(event) => {
+                setCertificatePassword(event.target.value);
+                setCertificateError("");
+                setCertificateSuccess("");
+              }}
+              autoComplete="new-password"
+              placeholder="Contraseña del archivo .p12"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-violet-500"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              La contraseña no se muestra después de guardar.
+            </p>
+          </div>
+        </div>
+
+        {certificateError ? (
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+            {certificateError}
+          </div>
+        ) : null}
+
+        {certificateSuccess ? (
+          <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+            {certificateSuccess}
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-wrap justify-end gap-3">
+          {sriCertificate?.configured ? (
+            <button
+              type="button"
+              onClick={handleCertificateDelete}
+              disabled={uploadingCertificate}
+              className="rounded-xl border border-red-500/40 px-5 py-3 font-semibold text-red-200 transition hover:bg-red-500/10 disabled:opacity-60"
+            >
+              Eliminar certificado
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={handleCertificateUpload}
+            disabled={uploadingCertificate}
+            className="rounded-xl bg-violet-600 px-6 py-3 font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {uploadingCertificate
+              ? "Guardando certificado..."
+              : sriCertificate?.configured
+              ? "🔄 Reemplazar certificado"
+              : "🔐 Guardar certificado"}
+          </button>
         </div>
       </section>
 

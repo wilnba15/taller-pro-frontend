@@ -652,7 +652,7 @@ export default function BillingInvoiceDetailPage() {
                     <button
                       type="button"
                       onClick={handleSignXml}
-                      disabled={signing || !sriDocument}
+                      disabled={signing}
                       className="w-full rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {signing ? "Firmando..." : "✍️ Firmar XML"}

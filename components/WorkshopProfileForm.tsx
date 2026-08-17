@@ -134,8 +134,7 @@ export default function WorkshopProfileForm() {
     setSriSuccess("");
   }
 
-  async function handleSriSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSriSubmit() {
     setSavingSri(true);
     setSriError("");
     setSriSuccess("");
@@ -347,7 +346,7 @@ export default function WorkshopProfileForm() {
           </p>
         </div>
 
-        <form onSubmit={handleSriSubmit} className="space-y-5">
+        <div className="space-y-5">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-300">
@@ -445,14 +444,15 @@ export default function WorkshopProfileForm() {
 
           <div className="flex justify-end">
             <button
-              type="submit"
+              type="button"
+              onClick={handleSriSubmit}
               disabled={savingSri}
               className="rounded-xl bg-cyan-600 px-6 py-3 font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {savingSri ? "Guardando SRI..." : "💾 Guardar configuración SRI"}
             </button>
           </div>
-        </form>
+        </div>
       </section>
 
       {error ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}

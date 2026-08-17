@@ -2,9 +2,13 @@
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import {
+  getMySriSettings,
   getMyWorkshop,
+  updateMySriSettings,
   updateMyWorkshop,
   uploadMyWorkshopLogo,
+  type SriSettings,
+  type SriSettingsUpdate,
   type WorkshopProfile,
   type WorkshopProfileUpdate,
 } from "@/lib/api";
@@ -19,6 +23,27 @@ type FormState = {
   address: string;
   logo_url: string;
   footer_text: string;
+};
+
+
+type SriFormState = {
+  environment: "pruebas";
+  establishment_code: string;
+  emission_point_code: string;
+  default_tax_rate: string;
+  accounting_required: boolean;
+  special_taxpayer_code: string;
+  rimpe_type: string;
+};
+
+const EMPTY_SRI_FORM: SriFormState = {
+  environment: "pruebas",
+  establishment_code: "001",
+  emission_point_code: "001",
+  default_tax_rate: "15",
+  accounting_required: false,
+  special_taxpayer_code: "",
+  rimpe_type: "",
 };
 
 const EMPTY_FORM: FormState = {
@@ -47,6 +72,19 @@ function profileToForm(profile: WorkshopProfile): FormState {
   };
 }
 
+
+function sriSettingsToForm(settings: SriSettings): SriFormState {
+  return {
+    environment: "pruebas",
+    establishment_code: settings.establishment_code || "001",
+    emission_point_code: settings.emission_point_code || "001",
+    default_tax_rate: String(settings.default_tax_rate ?? 15),
+    accounting_required: Boolean(settings.accounting_required),
+    special_taxpayer_code: settings.special_taxpayer_code || "",
+    rimpe_type: settings.rimpe_type || "",
+  };
+}
+
 function toNullable(value: string) {
   const cleaned = value.trim();
   return cleaned || null;
@@ -58,14 +96,22 @@ export default function WorkshopProfileForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [savingSri, setSavingSri] = useState(false);
+  const [sriForm, setSriForm] = useState<SriFormState>(EMPTY_SRI_FORM);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [sriError, setSriError] = useState("");
+  const [sriSuccess, setSriSuccess] = useState("");
 
   useEffect(() => {
     async function loadProfile() {
       try {
-        const profile = await getMyWorkshop();
+        const [profile, sriSettings] = await Promise.all([
+          getMyWorkshop(),
+          getMySriSettings(),
+        ]);
         setForm(profileToForm(profile));
+        setSriForm(sriSettingsToForm(sriSettings));
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar el perfil del taller");
       } finally {
@@ -78,6 +124,67 @@ export default function WorkshopProfileForm() {
   function updateField(field: keyof FormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
     setSuccess("");
+  }
+
+  function updateSriField<K extends keyof SriFormState>(
+    field: K,
+    value: SriFormState[K]
+  ) {
+    setSriForm((current) => ({ ...current, [field]: value }));
+    setSriSuccess("");
+  }
+
+  async function handleSriSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingSri(true);
+    setSriError("");
+    setSriSuccess("");
+
+    const establishment = sriForm.establishment_code.trim();
+    const emissionPoint = sriForm.emission_point_code.trim();
+    const taxRate = Number(sriForm.default_tax_rate);
+
+    if (!/^\d{3}$/.test(establishment)) {
+      setSavingSri(false);
+      setSriError("El establecimiento debe tener exactamente 3 dígitos.");
+      return;
+    }
+
+    if (!/^\d{3}$/.test(emissionPoint)) {
+      setSavingSri(false);
+      setSriError("El punto de emisión debe tener exactamente 3 dígitos.");
+      return;
+    }
+
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+      setSavingSri(false);
+      setSriError("La tarifa de IVA no es válida.");
+      return;
+    }
+
+    const payload: SriSettingsUpdate = {
+      environment: "pruebas",
+      establishment_code: establishment,
+      emission_point_code: emissionPoint,
+      default_tax_rate: taxRate,
+      accounting_required: sriForm.accounting_required,
+      special_taxpayer_code: toNullable(sriForm.special_taxpayer_code),
+      rimpe_type: toNullable(sriForm.rimpe_type),
+    };
+
+    try {
+      const updated = await updateMySriSettings(payload);
+      setSriForm(sriSettingsToForm(updated));
+      setSriSuccess("Configuración SRI actualizada correctamente.");
+    } catch (err) {
+      setSriError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo guardar la configuración SRI"
+      );
+    } finally {
+      setSavingSri(false);
+    }
   }
 
   async function handleLogoSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -227,6 +334,125 @@ export default function WorkshopProfileForm() {
             <div className="mt-1 text-right text-xs text-slate-500">{form.footer_text.length}/500</div>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-6 shadow-lg">
+        <div className="mb-6">
+          <p className="text-sm font-semibold uppercase tracking-wider text-cyan-300">
+            🇪🇨 Facturación electrónica
+          </p>
+          <h2 className="mt-2 text-xl font-semibold">Configuración SRI</h2>
+          <p className="mt-1 text-sm text-slate-300">
+            Estos datos se usarán para generar los comprobantes electrónicos del taller.
+          </p>
+        </div>
+
+        <form onSubmit={handleSriSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-300">
+                Ambiente
+              </label>
+              <input
+                value="PRUEBAS"
+                readOnly
+                className="w-full cursor-not-allowed rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 font-semibold text-emerald-300 opacity-80"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Producción permanece bloqueado durante esta etapa.
+              </p>
+            </div>
+
+            <Field
+              label="Código de establecimiento"
+              required
+              value={sriForm.establishment_code}
+              onChange={(v) =>
+                updateSriField(
+                  "establishment_code",
+                  v.replace(/\D/g, "").slice(0, 3)
+                )
+              }
+              placeholder="Ej. 004"
+            />
+
+            <Field
+              label="Punto de emisión"
+              required
+              value={sriForm.emission_point_code}
+              onChange={(v) =>
+                updateSriField(
+                  "emission_point_code",
+                  v.replace(/\D/g, "").slice(0, 3)
+                )
+              }
+              placeholder="Ej. 001"
+            />
+
+            <Field
+              label="IVA por defecto (%)"
+              required
+              value={sriForm.default_tax_rate}
+              onChange={(v) => updateSriField("default_tax_rate", v)}
+              placeholder="15"
+            />
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-300">
+                Obligado a llevar contabilidad
+              </label>
+              <select
+                value={sriForm.accounting_required ? "si" : "no"}
+                onChange={(event) =>
+                  updateSriField(
+                    "accounting_required",
+                    event.target.value === "si"
+                  )
+                }
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-500"
+              >
+                <option value="no">No</option>
+                <option value="si">Sí</option>
+              </select>
+            </div>
+
+            <Field
+              label="Código contribuyente especial"
+              value={sriForm.special_taxpayer_code}
+              onChange={(v) => updateSriField("special_taxpayer_code", v)}
+              placeholder="Opcional"
+            />
+
+            <Field
+              label="Régimen RIMPE"
+              value={sriForm.rimpe_type}
+              onChange={(v) => updateSriField("rimpe_type", v)}
+              placeholder="Opcional"
+            />
+          </div>
+
+          {sriError ? (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+              {sriError}
+            </div>
+          ) : null}
+
+          {sriSuccess ? (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+              {sriSuccess}
+            </div>
+          ) : null}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={savingSri}
+              className="rounded-xl bg-cyan-600 px-6 py-3 font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingSri ? "Guardando SRI..." : "💾 Guardar configuración SRI"}
+            </button>
+          </div>
+        </form>
       </section>
 
       {error ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}

@@ -36,6 +36,32 @@ export type WorkshopProfileUpdate = {
   footer_text?: string | null;
 };
 
+
+export type SriSettings = {
+  id: number;
+  workshop_id: number;
+  environment: string;
+  establishment_code: string;
+  emission_point_code: string;
+  invoice_sequence: number;
+  default_tax_rate: number;
+  accounting_required: boolean;
+  special_taxpayer_code: string | null;
+  rimpe_type: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type SriSettingsUpdate = {
+  environment: "pruebas";
+  establishment_code: string;
+  emission_point_code: string;
+  default_tax_rate: number;
+  accounting_required: boolean;
+  special_taxpayer_code?: string | null;
+  rimpe_type?: string | null;
+};
+
 export type AdminWorkshop = {
   id: number;
   name: string;
@@ -179,6 +205,18 @@ export function getMyWorkshop() {
 
 export function updateMyWorkshop(data: WorkshopProfileUpdate) {
   return apiFetch<WorkshopProfile>("/workshops/me", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+
+export function getMySriSettings() {
+  return apiFetch<SriSettings>("/sri-settings/me");
+}
+
+export function updateMySriSettings(data: SriSettingsUpdate) {
+  return apiFetch<SriSettings>("/sri-settings/me", {
     method: "PUT",
     body: JSON.stringify(data),
   });

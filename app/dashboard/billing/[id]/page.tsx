@@ -60,6 +60,37 @@ type ElectronicSignature = {
   updated_at: string;
 };
 
+type SriSubmission = {
+  id: number;
+  workshop_id: number;
+  invoice_id: number;
+  electronic_signature_id: number;
+  access_key: string;
+  environment: string;
+  reception_status?: string | null;
+  reception_messages?: Array<{
+    identificador?: string | null;
+    mensaje?: string | null;
+    informacion_adicional?: string | null;
+    tipo?: string | null;
+  }>;
+  received_at?: string | null;
+  authorization_status?: string | null;
+  authorization_number?: string | null;
+  authorization_date?: string | null;
+  authorization_environment?: string | null;
+  authorization_messages?: Array<{
+    identificador?: string | null;
+    mensaje?: string | null;
+    informacion_adicional?: string | null;
+    tipo?: string | null;
+  }>;
+  authorized_at?: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type Invoice = {
   id: number;
   workshop_id: number;
@@ -117,6 +148,11 @@ export default function BillingInvoiceDetailPage() {
   const [signature, setSignature] = useState<ElectronicSignature | null>(null);
   const [signing, setSigning] = useState(false);
   const [signatureError, setSignatureError] = useState("");
+  const [sriSubmission, setSriSubmission] = useState<SriSubmission | null>(null);
+  const [sendingSri, setSendingSri] = useState(false);
+  const [authorizingSri, setAuthorizingSri] = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
+
 
   useEffect(() => {
     const load = async () => {
@@ -157,6 +193,15 @@ export default function BillingInvoiceDetailPage() {
           setSignature(existingSignature);
         } catch {
           setSignature(null);
+        }
+
+        try {
+          const existingSubmission = await apiFetch<SriSubmission>(
+            `/sri-submissions/invoice/${invoiceId}`
+          );
+          setSriSubmission(existingSubmission);
+        } catch {
+          setSriSubmission(null);
         }
       } catch (err) {
         setError(
@@ -338,6 +383,55 @@ export default function BillingInvoiceDetailPage() {
       );
     }
   };
+
+  const handleSendToSri = async () => {
+    setSendingSri(true);
+    setSubmissionError("");
+
+    try {
+      if (!signature) {
+        throw new Error("Primero debe firmar el XML");
+      }
+
+      const result = await apiFetch<SriSubmission>(
+        `/sri-submissions/invoice/${invoiceId}/send`,
+        { method: "POST" }
+      );
+
+      setSriSubmission(result);
+    } catch (err) {
+      setSubmissionError(
+        err instanceof Error ? err.message : "No se pudo enviar el comprobante al SRI"
+      );
+    } finally {
+      setSendingSri(false);
+    }
+  };
+
+  const handleAuthorizeSri = async () => {
+    setAuthorizingSri(true);
+    setSubmissionError("");
+
+    try {
+      const result = await apiFetch<SriSubmission>(
+        `/sri-submissions/invoice/${invoiceId}/authorize`,
+        { method: "POST" }
+      );
+
+      setSriSubmission(result);
+    } catch (err) {
+      setSubmissionError(
+        err instanceof Error ? err.message : "No se pudo consultar la autorización del SRI"
+      );
+    } finally {
+      setAuthorizingSri(false);
+    }
+  };
+
+  const receptionOk = sriSubmission?.reception_status === "RECIBIDA";
+  const authorizationOk =
+    sriSubmission?.authorization_status?.toUpperCase() === "AUTORIZADO" ||
+    sriSubmission?.status === "autorizada";
 
   if (loading) {
     return (
@@ -701,12 +795,150 @@ export default function BillingInvoiceDetailPage() {
               ) : null}
             </div>
 
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5 text-sm text-amber-100">
-              <p className="font-semibold">Documento todavía no autorizado</p>
-              <p className="mt-2 text-amber-100/80">
-                Sprint 2B permite firmar electrónicamente el XML. El envío y la
-                autorización ante el SRI se realizarán en el siguiente sprint.
+            <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-6">
+              <p className="text-sm uppercase tracking-[0.14em] text-cyan-200">
+                🇪🇨 SRI — Recepción y autorización
               </p>
+              <h2 className="mt-2 text-xl font-semibold">Sprint Facturación 2C</h2>
+
+              <div className="mt-5 space-y-4 text-sm">
+                <div className="flex items-center justify-between rounded-xl border border-cyan-400/20 bg-slate-950/60 p-4">
+                  <span className="text-slate-300">Recepción SRI</span>
+                  <span
+                    className={`font-bold uppercase ${
+                      receptionOk
+                        ? "text-emerald-300"
+                        : sriSubmission?.reception_status
+                        ? "text-amber-300"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    {sriSubmission?.reception_status || "PENDIENTE"}
+                    {receptionOk ? " ✅" : ""}
+                  </span>
+                </div>
+
+                {!sriSubmission || !receptionOk ? (
+                  <button
+                    type="button"
+                    onClick={handleSendToSri}
+                    disabled={sendingSri || !signature}
+                    className="w-full rounded-xl bg-cyan-600 px-4 py-3 font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {sendingSri ? "Enviando al SRI..." : "🚀 Enviar al SRI"}
+                  </button>
+                ) : null}
+
+                {sriSubmission?.reception_messages?.length ? (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                    <p className="font-semibold text-amber-200">Mensajes de recepción</p>
+                    <div className="mt-2 space-y-2 text-amber-100/90">
+                      {sriSubmission.reception_messages.map((message, index) => (
+                        <div key={`${message.identificador || "msg"}-${index}`}>
+                          <p>
+                            {message.identificador ? `${message.identificador}: ` : ""}
+                            {message.mensaje || "Mensaje del SRI"}
+                          </p>
+                          {message.informacion_adicional ? (
+                            <p className="mt-1 text-xs text-amber-100/70">
+                              {message.informacion_adicional}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {receptionOk ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleAuthorizeSri}
+                      disabled={authorizingSri || authorizationOk}
+                      className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {authorizingSri
+                        ? "Consultando autorización..."
+                        : authorizationOk
+                        ? "✅ AUTORIZADO"
+                        : "🔎 Consultar autorización"}
+                    </button>
+
+                    <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-slate-400">Autorización</span>
+                        <span
+                          className={`font-bold uppercase ${
+                            authorizationOk
+                              ? "text-emerald-300"
+                              : sriSubmission?.authorization_status
+                              ? "text-amber-300"
+                              : "text-slate-400"
+                          }`}
+                        >
+                          {sriSubmission?.authorization_status || "PENDIENTE"}
+                          {authorizationOk ? " ✅" : ""}
+                        </span>
+                      </div>
+
+                      {sriSubmission?.authorization_number ? (
+                        <div className="mt-4">
+                          <p className="text-xs uppercase text-slate-500">
+                            Número de autorización
+                          </p>
+                          <p className="mt-1 break-all font-mono text-emerald-200">
+                            {sriSubmission.authorization_number}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {sriSubmission?.authorization_date ? (
+                        <p className="mt-3 text-slate-300">
+                          Fecha: {sriSubmission.authorization_date}
+                        </p>
+                      ) : null}
+
+                      {sriSubmission?.authorization_environment ? (
+                        <p className="mt-1 text-slate-300">
+                          Ambiente: {sriSubmission.authorization_environment}
+                        </p>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
+
+                {sriSubmission?.authorization_messages?.length ? (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+                    <p className="font-semibold text-red-200">Mensajes de autorización</p>
+                    <div className="mt-2 space-y-2 text-red-100/90">
+                      {sriSubmission.authorization_messages.map((message, index) => (
+                        <div key={`${message.identificador || "auth"}-${index}`}>
+                          <p>
+                            {message.identificador ? `${message.identificador}: ` : ""}
+                            {message.mensaje || "Mensaje del SRI"}
+                          </p>
+                          {message.informacion_adicional ? (
+                            <p className="mt-1 text-xs text-red-100/70">
+                              {message.informacion_adicional}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {submissionError ? (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+                    {submissionError}
+                  </div>
+                ) : null}
+
+                <p className="text-xs text-cyan-100/70">
+                  Ambiente de pruebas. Sprint 2C mantiene bloqueado el envío a producción.
+                </p>
+              </div>
             </div>
           </aside>
         </div>

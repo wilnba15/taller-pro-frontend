@@ -149,6 +149,9 @@ export default function BillingInvoiceDetailPage() {
   const [emitting, setEmitting] = useState(false);
   const [emitError, setEmitError] = useState("");
   const [emitMessage, setEmitMessage] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
 
 
   useEffect(() => {
@@ -322,6 +325,43 @@ export default function BillingInvoiceDetailPage() {
           ? err.message
           : "No se pudo abrir el XML autorizado"
       );
+    }
+  };
+
+  const handleSendInvoiceEmail = async () => {
+    setEmailSending(true);
+    setEmailMessage("");
+    setEmailError("");
+
+    try {
+      if (!invoice?.client_email) {
+        throw new Error(
+          "La factura no tiene correo electrónico del cliente."
+        );
+      }
+
+      const result = await apiFetch<{
+        ok: boolean;
+        message: string;
+        to?: string;
+        provider_id?: string | null;
+      }>(
+        `/sri-email/invoice/${invoiceId}/send`,
+        { method: "POST" }
+      );
+
+      setEmailMessage(
+        result.message ||
+          `Factura enviada correctamente a ${invoice.client_email}`
+      );
+    } catch (err) {
+      setEmailError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo enviar la factura por correo"
+      );
+    } finally {
+      setEmailSending(false);
     }
   };
 
@@ -741,6 +781,38 @@ export default function BillingInvoiceDetailPage() {
                     >
                       📥 XML autorizado
                     </button>
+                  </div>
+
+                  <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+                    <p className="text-sm text-cyan-100">
+                      La factura se enviará a:
+                    </p>
+                    <p className="mt-1 break-all font-semibold text-white">
+                      {invoice.client_email || "Sin correo registrado"}
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={handleSendInvoiceEmail}
+                      disabled={emailSending || !invoice.client_email}
+                      className="mt-4 w-full rounded-xl bg-cyan-600 px-4 py-3 font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {emailSending
+                        ? "Enviando factura..."
+                        : "📧 Enviar factura por correo"}
+                    </button>
+
+                    {emailMessage ? (
+                      <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                        {emailMessage}
+                      </div>
+                    ) : null}
+
+                    {emailError ? (
+                      <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                        {emailError}
+                      </div>
+                    ) : null}
                   </div>
 
                   <p className="text-xs text-emerald-100/70">

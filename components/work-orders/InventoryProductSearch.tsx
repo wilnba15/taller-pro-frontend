@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { InventoryProduct } from "@/lib/api";
 
 type Props = {
@@ -20,6 +21,7 @@ export default function InventoryProductSearch({
   onSelectProduct,
   onClearProduct,
 }: Props) {
+  const [isOpen, setIsOpen] = useState(false);
   const term = searchValue.trim().toLowerCase();
 
   const matches = term
@@ -48,19 +50,34 @@ export default function InventoryProductSearch({
         <input
           type="text"
           value={searchValue}
-          onChange={(event) => onSearchChange(event.target.value)}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => setIsOpen(false)}
+          onChange={(event) => {
+            setIsOpen(true);
+            onSearchChange(event.target.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setIsOpen(false);
+              event.currentTarget.blur();
+            }
+          }}
           placeholder="Buscar producto: ej. ace"
           autoComplete="off"
           className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none focus:border-emerald-500"
         />
 
-        {term && !selectedProductId ? (
+        {isOpen && term && !selectedProductId ? (
           <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
-{matches.map((product) => (
+            {matches.map((product) => (
               <button
                 key={product.id}
                 type="button"
-                onClick={() => onSelectProduct(product)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onSelectProduct(product);
+                  setIsOpen(false);
+                }}
                 className="block w-full border-b border-slate-800 px-3 py-2 text-left hover:bg-emerald-500/10"
               >
                 <span className="block font-medium text-white">

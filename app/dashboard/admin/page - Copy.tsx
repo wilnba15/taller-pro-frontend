@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   AdminWorkshop,
+  changeAdminWorkshopInventory,
   changeAdminWorkshopStatus,
   createAdminWorkshop,
   getAdminWorkshops,
@@ -19,6 +20,7 @@ type FormData = {
   admin_name: string;
   admin_email: string;
   admin_password: string;
+  inventory_enabled: boolean;
 };
 
 const emptyForm: FormData = {
@@ -30,6 +32,7 @@ const emptyForm: FormData = {
   admin_name: "",
   admin_email: "",
   admin_password: "",
+  inventory_enabled: false,
 };
 
 export default function AdminPage() {
@@ -63,7 +66,7 @@ export default function AdminPage() {
     loadWorkshops();
   }, [loadWorkshops]);
 
-  function updateField(field: keyof FormData, value: string) {
+  function updateField(field: keyof FormData, value: string | boolean) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
@@ -86,6 +89,7 @@ export default function AdminPage() {
       admin_name: workshop.admin_name || "",
       admin_email: workshop.admin_email || "",
       admin_password: "",
+      inventory_enabled: workshop.inventory_enabled,
     });
     setError("");
     setMessage("");
@@ -109,8 +113,19 @@ export default function AdminPage() {
           admin_name: form.admin_name,
           admin_email: form.admin_email,
           admin_password: form.admin_password || undefined,
+          inventory_enabled: form.inventory_enabled,
         });
-        setMessage("Taller actualizado correctamente.");
+
+        await changeAdminWorkshopInventory(
+          editingId,
+          form.inventory_enabled
+        );
+
+        setMessage(
+          form.inventory_enabled
+            ? "Taller actualizado e inventario activado correctamente."
+            : "Taller actualizado e inventario desactivado correctamente."
+        );
       } else {
         await createAdminWorkshop(form);
         setMessage("Taller y usuario creados correctamente.");
@@ -232,6 +247,19 @@ export default function AdminPage() {
                 required={!editingId}
                 minLength={form.admin_password ? 6 : undefined}
               />
+
+              <label className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={form.inventory_enabled}
+                  onChange={(event) => updateField("inventory_enabled", event.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span>
+                  <span className="block font-medium text-white">Activar módulo de inventario</span>
+                  <span className="block text-xs text-slate-400">El taller podrá registrar productos y controlar stock.</span>
+                </span>
+              </label>
             </div>
 
             <div className="mt-5 flex gap-3">
@@ -288,11 +316,20 @@ export default function AdminPage() {
                         <div className="text-xs text-slate-500">{workshop.admin_email || ""}</div>
                       </td>
                       <td className="px-4 py-3">
-                        {workshop.setup_completed ? (
-                          <span className="text-green-300">✅ Completa</span>
-                        ) : (
-                          <span className="text-amber-300">⚠️ Incompleta</span>
-                        )}
+                        <div>
+                          {workshop.setup_completed ? (
+                            <span className="text-green-300">✅ Completa</span>
+                          ) : (
+                            <span className="text-amber-300">⚠️ Incompleta</span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs">
+                          {workshop.inventory_enabled ? (
+                            <span className="text-blue-300">📦 Inventario activo</span>
+                          ) : (
+                            <span className="text-slate-500">Inventario inactivo</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className={workshop.status === "activo" ? "text-green-300" : "text-red-300"}>

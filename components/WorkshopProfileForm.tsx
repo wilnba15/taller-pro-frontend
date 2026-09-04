@@ -97,6 +97,7 @@ function toNullable(value: string) {
 export default function WorkshopProfileForm() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [billingEnabled, setBillingEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -116,14 +117,21 @@ export default function WorkshopProfileForm() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const [profile, sriSettings, certificateInfo] = await Promise.all([
-          getMyWorkshop(),
-          getMySriSettings(),
-          getMySriCertificate(),
-        ]);
+        const profile = await getMyWorkshop();
         setForm(profileToForm(profile));
-        setSriForm(sriSettingsToForm(sriSettings));
-        setSriCertificate(certificateInfo);
+        setBillingEnabled(Boolean(profile.billing_enabled));
+
+        if (profile.billing_enabled) {
+          const [sriSettings, certificateInfo] = await Promise.all([
+            getMySriSettings(),
+            getMySriCertificate(),
+          ]);
+          setSriForm(sriSettingsToForm(sriSettings));
+          setSriCertificate(certificateInfo);
+        } else {
+          setSriForm(EMPTY_SRI_FORM);
+          setSriCertificate(null);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar el perfil del taller");
       } finally {
@@ -414,8 +422,10 @@ export default function WorkshopProfileForm() {
         </div>
       </section>
 
+      {billingEnabled ? (
+        <>
       <section className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-6 shadow-lg">
-        <div className="mb-6">
+          <div className="mb-6">
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-300">
             🇪🇨 Facturación electrónica
           </p>
@@ -654,6 +664,8 @@ export default function WorkshopProfileForm() {
           </button>
         </div>
       </section>
+        </>
+      ) : null}
 
       {error ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}
       {success ? <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">{success}</div> : null}

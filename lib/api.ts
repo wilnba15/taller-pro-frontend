@@ -19,6 +19,7 @@ export type WorkshopProfile = {
   footer_text: string | null;
   setup_completed: boolean;
   inventory_enabled: boolean;
+  billing_enabled: boolean;
   status: string;
   created_at: string;
   updated_at: string | null;
@@ -92,6 +93,7 @@ export type AdminWorkshop = {
   admin_name: string | null;
   admin_email: string | null;
   inventory_enabled: boolean;
+  billing_enabled: boolean;
 };
 
 export type AdminWorkshopCreate = {
@@ -104,6 +106,7 @@ export type AdminWorkshopCreate = {
   admin_email: string;
   admin_password: string;
   inventory_enabled?: boolean;
+  billing_enabled?: boolean;
 };
 
 export type AdminWorkshopUpdate = {
@@ -116,6 +119,7 @@ export type AdminWorkshopUpdate = {
   admin_email?: string;
   admin_password?: string;
   inventory_enabled?: boolean;
+  billing_enabled?: boolean;
 };
 
 export type ChangePasswordData = {
@@ -344,6 +348,21 @@ export function changeAdminWorkshopInventory(
   }>(`/admin/workshops/${workshopId}/inventory`, {
     method: "PATCH",
     body: JSON.stringify({ inventory_enabled: inventoryEnabled }),
+  });
+}
+
+
+export function changeAdminWorkshopBilling(
+  workshopId: number,
+  billingEnabled: boolean
+) {
+  return apiFetch<{
+    message: string;
+    workshop_id: number;
+    billing_enabled: boolean;
+  }>(`/admin/workshops/${workshopId}/billing`, {
+    method: "PATCH",
+    body: JSON.stringify({ billing_enabled: billingEnabled }),
   });
 }
 

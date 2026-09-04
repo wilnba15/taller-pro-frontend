@@ -18,6 +18,7 @@ export type WorkshopProfile = {
   logo_url: string | null;
   footer_text: string | null;
   setup_completed: boolean;
+  inventory_enabled: boolean;
   status: string;
   created_at: string;
   updated_at: string | null;
@@ -35,6 +36,49 @@ export type WorkshopProfileUpdate = {
   footer_text?: string | null;
 };
 
+
+export type SriSettings = {
+  id: number;
+  workshop_id: number;
+  environment: string;
+  establishment_code: string;
+  emission_point_code: string;
+  invoice_sequence: number;
+  default_tax_rate: number;
+  accounting_required: boolean;
+  special_taxpayer_code: string | null;
+  rimpe_type: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type SriSettingsUpdate = {
+  environment: "pruebas";
+  establishment_code: string;
+  emission_point_code: string;
+  default_tax_rate: number;
+  accounting_required: boolean;
+  special_taxpayer_code?: string | null;
+  rimpe_type?: string | null;
+};
+
+
+export type SriCertificateInfo = {
+  configured: boolean;
+  id?: number;
+  workshop_id?: number;
+  filename?: string;
+  certificate_subject?: string;
+  certificate_issuer?: string;
+  certificate_serial?: string;
+  valid_from?: string;
+  valid_to?: string;
+  sha256?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string | null;
+};
+
 export type AdminWorkshop = {
   id: number;
   name: string;
@@ -47,6 +91,7 @@ export type AdminWorkshop = {
   created_at: string;
   admin_name: string | null;
   admin_email: string | null;
+  inventory_enabled: boolean;
 };
 
 export type AdminWorkshopCreate = {
@@ -58,6 +103,7 @@ export type AdminWorkshopCreate = {
   admin_name: string;
   admin_email: string;
   admin_password: string;
+  inventory_enabled?: boolean;
 };
 
 export type AdminWorkshopUpdate = {
@@ -69,6 +115,7 @@ export type AdminWorkshopUpdate = {
   admin_name?: string;
   admin_email?: string;
   admin_password?: string;
+  inventory_enabled?: boolean;
 };
 
 export type ChangePasswordData = {
@@ -180,6 +227,64 @@ export function updateMyWorkshop(data: WorkshopProfileUpdate) {
   });
 }
 
+
+export function getMySriSettings() {
+  return apiFetch<SriSettings>("/sri-settings/me");
+}
+
+export function updateMySriSettings(data: SriSettingsUpdate) {
+  return apiFetch<SriSettings>("/sri-settings/me", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+
+export function getMySriCertificate() {
+  return apiFetch<SriCertificateInfo>("/sri-certificates/me");
+}
+
+export async function uploadMySriCertificate(
+  file: File,
+  password: string
+) {
+  const token = requireToken();
+  const api = getApiBase();
+  const formData = new FormData();
+
+  formData.append("certificate", file);
+  formData.append("password", password);
+
+  const res = await fetch(`${api}/sri-certificates/me`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    clearSession();
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    throw new Error("Sesión vencida o no autorizada");
+  }
+
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+
+  return res.json() as Promise<SriCertificateInfo>;
+}
+
+export function deleteMySriCertificate() {
+  return apiFetch<{ message: string }>("/sri-certificates/me", {
+    method: "DELETE",
+  });
+}
+
 export async function uploadMyWorkshopLogo(file: File) {
   const token = requireToken();
   const api = getApiBase();
@@ -228,9 +333,85 @@ export function changeAdminWorkshopStatus(workshopId: number, status: "activo" |
   });
 }
 
+export function changeAdminWorkshopInventory(
+  workshopId: number,
+  inventoryEnabled: boolean
+) {
+  return apiFetch<{
+    message: string;
+    workshop_id: number;
+    inventory_enabled: boolean;
+  }>(`/admin/workshops/${workshopId}/inventory`, {
+    method: "PATCH",
+    body: JSON.stringify({ inventory_enabled: inventoryEnabled }),
+  });
+}
+
 export function changeMyPassword(data: ChangePasswordData) {
   return apiFetch<{ message: string }>("/auth/change-password", {
     method: "POST",
     body: JSON.stringify(data),
+  });
+}
+
+export type InventoryProduct = {
+  id: number;
+  workshop_id: number;
+  code: string | null;
+  name: string;
+  category: string | null;
+  brand: string | null;
+  stock: number;
+  minimum_stock: number;
+  cost: number;
+  sale_price: number;
+  is_active: boolean;
+  low_stock: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InventoryProductPayload = {
+  code?: string | null;
+  name: string;
+  category?: string | null;
+  brand?: string | null;
+  stock: number;
+  minimum_stock: number;
+  cost: number;
+  sale_price: number;
+  is_active: boolean;
+};
+
+export function getInventoryProducts(params?: {
+  search?: string;
+  low_stock?: boolean;
+  include_inactive?: boolean;
+}) {
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  if (params?.low_stock) query.set("low_stock", "true");
+  if (params?.include_inactive) query.set("include_inactive", "true");
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch<InventoryProduct[]>(`/inventory/${suffix}`);
+}
+
+export function createInventoryProduct(data: InventoryProductPayload) {
+  return apiFetch<InventoryProduct>("/inventory/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateInventoryProduct(productId: number, data: Partial<InventoryProductPayload>) {
+  return apiFetch<InventoryProduct>(`/inventory/${productId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deactivateInventoryProduct(productId: number) {
+  return apiFetch<{ message: string }>(`/inventory/${productId}`, {
+    method: "DELETE",
   });
 }

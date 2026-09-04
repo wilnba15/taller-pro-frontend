@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   AdminWorkshop,
+  changeAdminWorkshopBilling,
   changeAdminWorkshopInventory,
   changeAdminWorkshopStatus,
   createAdminWorkshop,
@@ -21,6 +22,7 @@ type FormData = {
   admin_email: string;
   admin_password: string;
   inventory_enabled: boolean;
+  billing_enabled: boolean;
 };
 
 const emptyForm: FormData = {
@@ -33,6 +35,7 @@ const emptyForm: FormData = {
   admin_email: "",
   admin_password: "",
   inventory_enabled: false,
+  billing_enabled: false,
 };
 
 export default function AdminPage() {
@@ -90,6 +93,7 @@ export default function AdminPage() {
       admin_email: workshop.admin_email || "",
       admin_password: "",
       inventory_enabled: workshop.inventory_enabled,
+      billing_enabled: workshop.billing_enabled,
     });
     setError("");
     setMessage("");
@@ -114,6 +118,7 @@ export default function AdminPage() {
           admin_email: form.admin_email,
           admin_password: form.admin_password || undefined,
           inventory_enabled: form.inventory_enabled,
+          billing_enabled: form.billing_enabled,
         });
 
         await changeAdminWorkshopInventory(
@@ -121,11 +126,12 @@ export default function AdminPage() {
           form.inventory_enabled
         );
 
-        setMessage(
-          form.inventory_enabled
-            ? "Taller actualizado e inventario activado correctamente."
-            : "Taller actualizado e inventario desactivado correctamente."
+        await changeAdminWorkshopBilling(
+          editingId,
+          form.billing_enabled
         );
+
+        setMessage("Taller y módulos actualizados correctamente.");
       } else {
         await createAdminWorkshop(form);
         setMessage("Taller y usuario creados correctamente.");
@@ -260,6 +266,19 @@ export default function AdminPage() {
                   <span className="block text-xs text-slate-400">El taller podrá registrar productos y controlar stock.</span>
                 </span>
               </label>
+
+              <label className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={form.billing_enabled}
+                  onChange={(event) => updateField("billing_enabled", event.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span>
+                  <span className="block font-medium text-white">Activar facturación electrónica</span>
+                  <span className="block text-xs text-slate-400">El taller podrá configurar SRI, certificado .p12 y emitir comprobantes electrónicos.</span>
+                </span>
+              </label>
             </div>
 
             <div className="mt-5 flex gap-3">
@@ -328,6 +347,13 @@ export default function AdminPage() {
                             <span className="text-blue-300">📦 Inventario activo</span>
                           ) : (
                             <span className="text-slate-500">Inventario inactivo</span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs">
+                          {workshop.billing_enabled ? (
+                            <span className="text-cyan-300">🇪🇨 Facturación electrónica activa</span>
+                          ) : (
+                            <span className="text-slate-500">Facturación electrónica inactiva</span>
                           )}
                         </div>
                       </td>

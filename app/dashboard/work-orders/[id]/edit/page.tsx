@@ -159,6 +159,7 @@ export default function EditWorkOrderPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
   const [inventoryEnabled, setInventoryEnabled] = useState(false);
+  const [billingEnabled, setBillingEnabled] = useState(false);
   const [orderNumber, setOrderNumber] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -347,6 +348,7 @@ export default function EditWorkOrderPage() {
         setVehicles(vehiclesData);
         setOrderNumber(order.order_number);
         setInventoryEnabled(workshopData.inventory_enabled);
+        setBillingEnabled(Boolean(workshopData.billing_enabled));
 
         if (workshopData.inventory_enabled) {
           const productsData = await getInventoryProducts({
@@ -1291,14 +1293,16 @@ Gracias por confiar en Taller PRO`;
                 {saving ? "Guardando..." : "Guardar cambios"}
               </button>
 
-              <button
-                type="button"
-                onClick={handleSaveAndInvoice}
-                disabled={saving}
-                className="rounded-xl bg-emerald-600 px-5 py-3 font-medium hover:bg-emerald-500 transition disabled:opacity-60"
-              >
-                {saving ? "Procesando..." : "🧾 Facturar OT"}
-              </button>
+              {billingEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleSaveAndInvoice}
+                  disabled={saving}
+                  className="rounded-xl bg-emerald-600 px-5 py-3 font-medium hover:bg-emerald-500 transition disabled:opacity-60"
+                >
+                  {saving ? "Procesando..." : "🧾 Facturar OT"}
+                </button>
+              ) : null}
 
               <button
                 type="button"

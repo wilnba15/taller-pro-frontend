@@ -99,6 +99,28 @@ type WorkOrderItemDB = {
   created_at?: string;
 };
 
+type Invoice = {
+  id: number;
+  workshop_id: number;
+  work_order_id: number;
+  client_id: number;
+  establishment_code: string;
+  emission_point_code: string;
+  sequential: number;
+  invoice_number: string;
+  issue_date: string;
+  client_name: string;
+  client_identification: string;
+  client_email?: string | null;
+  client_address?: string | null;
+  subtotal_0: number | string;
+  subtotal_taxed: number | string;
+  tax_amount: number | string;
+  discount: number | string;
+  total: number | string;
+  status: string;
+};
+
 const parseAmount = (value: string | number | null | undefined) => {
   if (value === null || value === undefined) return 0;
 
@@ -757,27 +779,28 @@ export default function EditWorkOrderPage() {
 
       await saveCostItems();
 
-      setMessage("Orden guardada. Generando factura...");
+      setMessage("Orden guardada. Creando factura...");
 
-      const pdfRes = await fetch(`${api}/work-orders/invoice/${orderId}/pdf`, {
-        headers: getAuthHeaders(),
-      });
+      const invoice = await apiFetch<Invoice>(
+        `/invoices/from-work-order/${orderId}`,
+        {
+          method: "POST",
+        }
+      );
 
-      if (!pdfRes.ok) {
-        throw new Error("No se pudo generar la factura PDF");
+      if (!invoice?.id) {
+        throw new Error("La factura fue creada, pero no se recibió su identificador");
       }
 
-      const blob = await pdfRes.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
+      setMessage(`Factura ${invoice.invoice_number} creada correctamente.`);
 
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-
-      setTimeout(() => {
-        setMessage("");
-      }, 2500);
+      router.push(`/dashboard/billing/${invoice.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error inesperado al generar factura");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Error inesperado al crear la factura"
+      );
     } finally {
       setSaving(false);
     }
@@ -1274,7 +1297,7 @@ Gracias por confiar en Taller PRO`;
                 disabled={saving}
                 className="rounded-xl bg-emerald-600 px-5 py-3 font-medium hover:bg-emerald-500 transition disabled:opacity-60"
               >
-                {saving ? "Procesando..." : "🧾 Generar factura"}
+                {saving ? "Procesando..." : "🧾 Facturar OT"}
               </button>
 
               <button

@@ -12,6 +12,7 @@ type Client = { id: number };
 type Vehicle = { id: number };
 type WorkOrder = {
   id: number;
+  order_number?: number;
   status: string;
   total: string | number;
   entry_date: string;
@@ -282,7 +283,7 @@ export default function DashboardPage() {
               <table className="min-w-full text-sm">
                 <thead className="border-b border-slate-800 text-slate-300">
                   <tr>
-                    <th className="py-3 pr-4 text-left">ID</th>
+                    <th className="py-3 pr-4 text-left">OT</th>
                     <th className="py-3 pr-4 text-left">Estado</th>
                     <th className="py-3 pr-4 text-left">Total real</th>
                     <th className="py-3 pr-4 text-left">Fecha</th>
@@ -300,7 +301,7 @@ export default function DashboardPage() {
                       const date = parseOrderDate(order);
                       return (
                         <tr key={order.id} className="border-b border-slate-800/70">
-                          <td className="py-3 pr-4 font-semibold">{order.id}</td>
+                          <td className="py-3 pr-4 font-semibold">#{order.order_number ?? order.id}</td>
                           <td className="py-3 pr-4 capitalize">
                             {order.status.replace("_", " ")}
                           </td>
